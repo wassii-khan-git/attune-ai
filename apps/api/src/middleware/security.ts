@@ -1,8 +1,22 @@
 import cors from 'cors';
 import type { RequestHandler } from 'express';
-import helmet from 'helmet';
+import helmetModule, { type HelmetOptions } from 'helmet';
 
 const CORS_PREFLIGHT_MAX_AGE_SEC = 600;
+
+/**
+ * `helmet`, under a signature written out here.
+ *
+ * helmet publishes one set of types for ES modules and another for CommonJS.
+ * Vercel's builder type-checks every import as if the importing file were
+ * CommonJS, picks the CommonJS types, and then reads this default import as a
+ * module object instead of the function Node really provides at runtime. The
+ * build fails on a call that is correct.
+ *
+ * Stating the type here gives the same answer under both readings. The options
+ * are still checked against helmet's own `HelmetOptions`.
+ */
+const helmet = helmetModule as unknown as (options?: HelmetOptions) => RequestHandler;
 
 /**
  * Security headers for a JSON API. Nothing this server returns should be

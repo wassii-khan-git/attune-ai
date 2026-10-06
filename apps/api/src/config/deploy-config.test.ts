@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 
+import { fileURLToPath } from 'node:url';
+
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+
+import { vercelTypeCheck } from '../testing/vercel-type-check.js';
 
 const read = (relativePath: string): string =>
   readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -34,4 +38,9 @@ describe('what the deployment platform requires', () => {
     });
     expect(options).toHaveProperty('target');
   });
+  it('passes the type check Vercel runs before deploying, which is not the same as tsc', () => {
+    const apiDirectory = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
+
+    expect(vercelTypeCheck(apiDirectory)).toEqual([]);
+  }, 120_000);
 });
