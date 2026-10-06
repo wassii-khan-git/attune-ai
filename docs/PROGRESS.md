@@ -9,9 +9,11 @@
 
 - Phase 1, Step 1.5: visits (create, list with title search and cursor pagination, get, replace note, delete) and account deletion
 
+- Phase 1, Step 1.6: AI pipeline (`POST /v1/visits/:id/process`: audio upload, Gemini transcription and note drafting, NDJSON stream, daily quota, timeout and one retry, ADR 0003)
+
 ## Next
 
-- Phase 1, Step 1.6: AI pipeline
+- Phase 1, Step 1.6b: AI evaluation
 
 ## Notes / decisions
 
@@ -63,11 +65,23 @@
 - `soapNoteSchema` and `transcriptSchema` live in `packages/shared`. The speaker label is a free string for now; step 1.6 may narrow it.
 - Consent is given at creation (`consentGiven: true`) and timestamped by the server.
 
+### AI pipeline
+
+- Protocol: multipart upload (field `audio`, optional `durationSec`), then `application/x-ndjson` events validated by `processEventSchema` in `packages/shared`. Refusals before the stream use normal status codes; after it starts, read the last event (`done` or `error`).
+- Only `src/ai` may import `ai` or `@ai-sdk/*` (lint). Everything else depends on the `ScribeModel` interface; tests use `createFakeScribeModel()`.
+- Prompts are in `src/ai/prompts.ts` with a version each. Bump the version when the text changes; it is logged with every run.
+- AI SDK 7: structured output is `generateText` / `streamText` with `Output.object`. Always pass `onError` to `streamText`, or the SDK prints the error, which contains the request body, to the console.
+- Quota: 10 generations per UTC day, 3 for guests. A run counts when it starts and is not refunded if it fails.
+- The audio type is detected from the file's bytes (`src/lib/audio-format.ts`), not from the client's header. A real run with AAC in an MP4 container worked. WebM/Opus from Chrome's `MediaRecorder` has not been tried against Gemini: check it in step 2.3 and record in another container if it is refused.
+- On 2026-10-06 `gemini-3.8-flash` and `gemini-3.5-flash` answered 503 "high demand" even for a one-line prompt, while `gemini-3.5-flash-lite` completed the full pipeline in about 9 s for a 31 s recording. `GEMINI_MODEL` in `.env` is the owner's choice and was left unchanged.
+
 ### Testing
 
 - API tests run the real app on the in-memory repositories in `src/testing`. Nothing automated exercises the Prisma repositories yet: they were checked by hand against Neon, which is how the unescaped LIKE wildcard in title search was found. Step 1.7 should add integration tests for the repositories, including that search.
 
 ### To carry into later steps
+
+- Step 1.7: give the function a maximum duration that covers the model timeouts with one retry each (transcription 90 s, note 60 s).
 
 - Step 1.8 (threat model): account deletion does not ask for the password again; registration reveals whether an email is taken; rate limits are per address only.
 

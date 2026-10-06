@@ -49,12 +49,30 @@ export type VisitRepository = {
   /** Newest first. */
   list: (input: ListVisitsInput) => Promise<VisitSummaryRecord[]>;
   findOwned: (id: string, userId: string) => Promise<VisitRecord | null>;
-  /** Stores the note unless a generation is in flight. Returns null when nothing was updated. */
+  /**
+   * Stores the note unless a generation is in flight. Returns null when nothing
+   * was updated. A run that started before `staleBefore` is treated as abandoned.
+   */
   updateNoteUnlessProcessing: (
     id: string,
     userId: string,
     noteEnc: string,
+    staleBefore: Date,
   ) => Promise<VisitSummaryRecord | null>;
+  /**
+   * Moves the visit to PROCESSING in one statement and reports whether this
+   * caller won. It loses to a run that is still in flight, and takes over one
+   * that started before `staleBefore`, which a crashed request would otherwise
+   * leave stuck forever.
+   */
+  claimForProcessing: (id: string, userId: string, staleBefore: Date) => Promise<boolean>;
+  /** Stores the results and marks the visit READY. Returns null if the visit no longer exists. */
+  completeProcessing: (
+    id: string,
+    userId: string,
+    result: { transcriptEnc: string; noteEnc: string; durationSec: number | null },
+  ) => Promise<VisitSummaryRecord | null>;
+  setStatus: (id: string, userId: string, status: VisitStatus) => Promise<void>;
   /** Returns whether a row was deleted. */
   deleteOwned: (id: string, userId: string) => Promise<boolean>;
 };
@@ -75,6 +93,13 @@ const fullSelect = {
   transcriptEnc: true,
   noteEnc: true,
 } satisfies Prisma.VisitSelect;
+
+/** Matches visits with no run in flight: any other status, or a PROCESSING row untouched since `staleBefore`. */
+function notBeingProcessed(staleBefore: Date): Prisma.VisitWhereInput {
+  return {
+    OR: [{ status: { not: 'PROCESSING' } }, { updatedAt: { lt: staleBefore } }],
+  };
+}
 
 export function createVisitRepository(prisma: PrismaClient): VisitRepository {
   return {
@@ -105,13 +130,34 @@ export function createVisitRepository(prisma: PrismaClient): VisitRepository {
     findOwned: (id, userId) =>
       prisma.visit.findFirst({ where: { id, userId }, select: fullSelect }),
 
-    updateNoteUnlessProcessing: async (id, userId, noteEnc) => {
+    updateNoteUnlessProcessing: async (id, userId, noteEnc, staleBefore) => {
       const [updated] = await prisma.visit.updateManyAndReturn({
-        where: { id, userId, status: { not: 'PROCESSING' } },
+        where: { id, userId, ...notBeingProcessed(staleBefore) },
         data: { noteEnc },
         select: summarySelect,
       });
       return updated ?? null;
+    },
+
+    claimForProcessing: async (id, userId, staleBefore) => {
+      const { count } = await prisma.visit.updateMany({
+        where: { id, userId, ...notBeingProcessed(staleBefore) },
+        data: { status: 'PROCESSING' },
+      });
+      return count === 1;
+    },
+
+    completeProcessing: async (id, userId, result) => {
+      const [updated] = await prisma.visit.updateManyAndReturn({
+        where: { id, userId },
+        data: { ...result, status: 'READY' },
+        select: summarySelect,
+      });
+      return updated ?? null;
+    },
+
+    setStatus: async (id, userId, status) => {
+      await prisma.visit.updateMany({ where: { id, userId }, data: { status } });
     },
 
     deleteOwned: async (id, userId) => {

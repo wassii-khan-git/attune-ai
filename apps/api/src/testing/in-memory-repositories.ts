@@ -7,6 +7,7 @@ import type {
   RefreshTokenRecord,
   RefreshTokenRepository,
 } from '../repositories/refresh-token.repository.js';
+import type { UsageRepository } from '../repositories/usage.repository.js';
 import {
   EmailTakenError,
   type UserRecord,
@@ -204,19 +205,69 @@ export function createInMemoryVisitRepository(now: () => Date): InMemoryVisitRep
       const record = owned(id, userId);
       return Promise.resolve(record === undefined ? null : { ...record });
     },
-    updateNoteUnlessProcessing: (id, userId, noteEnc) => {
+    updateNoteUnlessProcessing: (id, userId, noteEnc, staleBefore) => {
       const record = owned(id, userId);
-      if (record === undefined || record.status === 'PROCESSING') {
+      if (record === undefined || isBeingProcessed(record, staleBefore)) {
         return Promise.resolve(null);
       }
       record.noteEnc = noteEnc;
       record.updatedAt = now();
       return Promise.resolve(toSummaryRecord(record));
     },
+    claimForProcessing: (id, userId, staleBefore) => {
+      const record = owned(id, userId);
+      if (record === undefined || isBeingProcessed(record, staleBefore)) {
+        return Promise.resolve(false);
+      }
+      record.status = 'PROCESSING';
+      record.updatedAt = now();
+      return Promise.resolve(true);
+    },
+    completeProcessing: (id, userId, result) => {
+      const record = owned(id, userId);
+      if (record === undefined) {
+        return Promise.resolve(null);
+      }
+      Object.assign(record, result, { status: 'READY', updatedAt: now() });
+      return Promise.resolve(toSummaryRecord(record));
+    },
+    setStatus: (id, userId, status) => {
+      const record = owned(id, userId);
+      if (record !== undefined) {
+        record.status = status;
+        record.updatedAt = now();
+      }
+      return Promise.resolve();
+    },
     deleteOwned: (id, userId) =>
       Promise.resolve(
         removeWhere(records, (record) => record.id === id && record.userId === userId) > 0,
       ),
+  };
+}
+
+function isBeingProcessed(record: VisitRecord, staleBefore: Date): boolean {
+  return record.status === 'PROCESSING' && record.updatedAt.getTime() >= staleBefore.getTime();
+}
+
+export type InMemoryUsageRepository = UsageRepository & {
+  /** Total generations counted for a user across all days. */
+  totalFor: (userId: string) => number;
+};
+
+export function createInMemoryUsageRepository(): InMemoryUsageRepository {
+  const counts = new Map<string, number>();
+  return {
+    totalFor: (userId) =>
+      [...counts.entries()]
+        .filter(([key]) => key.startsWith(`${userId}@`))
+        .reduce((total, [, count]) => total + count, 0),
+    increment: (userId, day) => {
+      const key = `${userId}@${day.toISOString().slice(0, 10)}`;
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return Promise.resolve(count);
+    },
   };
 }
 
@@ -238,6 +289,7 @@ export type InMemoryRepositories = Repositories & {
   refreshTokens: InMemoryRefreshTokenRepository;
   audit: InMemoryAuditRepository;
   visits: InMemoryVisitRepository;
+  usage: InMemoryUsageRepository;
 };
 
 export function createInMemoryRepositories(now: () => Date): InMemoryRepositories {
@@ -253,5 +305,6 @@ export function createInMemoryRepositories(now: () => Date): InMemoryRepositorie
     audit: createInMemoryAuditRepository(),
     rateLimits: createInMemoryRateLimitRepository(),
     visits,
+    usage: createInMemoryUsageRepository(),
   };
 }

@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 
 import { createApp, type AppDependencies } from '../app.js';
+import { createFakeScribeModel } from './fake-scribe-model.js';
 import { createInMemoryRepositories, type InMemoryRepositories } from './in-memory-repositories.js';
 import { captureLogs, type LogCapture } from './log-capture.js';
 
@@ -45,6 +46,8 @@ export function createTestApp(overrides: Partial<AppDependencies> = {}): TestApp
     trustProxyHops: 0,
     accessTokenSecret: TEST_ACCESS_TOKEN_SECRET,
     fieldEncryptionKey: TEST_FIELD_ENCRYPTION_KEY,
+    scribeModel: createFakeScribeModel(),
+    sleep: () => Promise.resolve(),
     secureCookies: false,
     // The lowest cost bcrypt allows keeps the suite fast.
     passwordHashCost: 4,

@@ -1,3 +1,4 @@
+import { createGeminiScribeModel } from './ai/gemini-scribe-model.js';
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createLogger } from './lib/logger.js';
@@ -35,6 +36,10 @@ const app = createApp({
   trustProxyHops: config.TRUST_PROXY_HOPS,
   accessTokenSecret: config.JWT_ACCESS_SECRET,
   fieldEncryptionKey: Buffer.from(config.ENCRYPTION_KEY, 'base64'),
+  scribeModel: createGeminiScribeModel({
+    apiKey: config.GOOGLE_GENERATIVE_AI_API_KEY,
+    modelId: config.GEMINI_MODEL,
+  }),
   secureCookies: config.NODE_ENV !== 'development',
 });
 

@@ -5,6 +5,7 @@ import {
   createRefreshTokenRepository,
   type RefreshTokenRepository,
 } from './refresh-token.repository.js';
+import { createUsageRepository, type UsageRepository } from './usage.repository.js';
 import { createUserRepository, type UserRepository } from './user.repository.js';
 import { createVisitRepository, type VisitRepository } from './visit.repository.js';
 
@@ -15,6 +16,7 @@ export type Repositories = {
   audit: AuditRepository;
   rateLimits: RateLimitRepository;
   visits: VisitRepository;
+  usage: UsageRepository;
 };
 
 /** The production set, backed by one Prisma client. */
@@ -25,5 +27,6 @@ export function createRepositories(prisma: PrismaClient): Repositories {
     audit: createAuditRepository(prisma),
     rateLimits: createRateLimitRepository(prisma),
     visits: createVisitRepository(prisma),
+    usage: createUsageRepository(prisma),
   };
 }

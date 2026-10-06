@@ -33,6 +33,17 @@ export type VisitService = {
   delete: (userId: string, visitId: string) => Promise<void>;
 };
 
+/**
+ * A generation run finishes or fails well inside this window. A visit still
+ * marked PROCESSING after it belongs to a request that died, and may be
+ * edited or processed again.
+ */
+export const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
+
+export function processingStaleBefore(now: Date): Date {
+  return new Date(now.getTime() - PROCESSING_STALE_AFTER_MS);
+}
+
 export type VisitServiceDependencies = {
   visits: VisitRepository;
   cipher: FieldCipher;
@@ -147,6 +158,7 @@ export function createVisitService({
         visitId,
         userId,
         cipher.encrypt(JSON.stringify(note), visitFieldContext(visitId, 'note')),
+        processingStaleBefore(now()),
       );
       if (updated === null) {
         // The generated note is about to be written; saving now would be overwritten silently.

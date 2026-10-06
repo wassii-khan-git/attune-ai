@@ -16,9 +16,12 @@ export const soapNoteSchema = z.object({
 });
 export type SoapNote = z.infer<typeof soapNoteSchema>;
 
+export const speakerSchema = z.enum(['Clinician', 'Patient', 'Other']);
+export type Speaker = z.infer<typeof speakerSchema>;
+
 /** One uninterrupted stretch of speech by one speaker. */
 export const transcriptTurnSchema = z.object({
-  speaker: z.string().trim().min(1).max(40),
+  speaker: speakerSchema,
   text: z.string(),
 });
 export type TranscriptTurn = z.infer<typeof transcriptTurnSchema>;

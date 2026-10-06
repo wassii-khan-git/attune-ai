@@ -9,8 +9,23 @@ const databaseAccess = {
   message: 'Only files in src/repositories may talk to the database.',
 };
 
+/** Only the adapter in src/ai may import the model SDK, so the provider can be swapped in one place. */
+const modelSdkMessage =
+  'Only files in src/ai may import the model SDK. Depend on ScribeModel instead.';
+const modelSdkAccess = { group: ['@ai-sdk/*'], message: modelSdkMessage };
+// Listed by exact name: as a pattern, "ai" would also match the local src/ai folder.
+const modelSdkPackage = { name: 'ai', message: modelSdkMessage };
+
 function restrictImports(patterns) {
-  return { 'no-restricted-imports': ['error', { patterns }] };
+  return {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: patterns.filter((entry) => 'group' in entry),
+        paths: patterns.filter((entry) => 'name' in entry),
+      },
+    ],
+  };
 }
 
 /**
@@ -21,7 +36,11 @@ function restrictLayer(layer, forbidden, message) {
   const layering = { group: forbidden.map((name) => `**/${name}/**`), message };
   return {
     files: [`apps/api/src/${layer}/**`],
-    rules: restrictImports(layer === 'repositories' ? [layering] : [layering, databaseAccess]),
+    rules: restrictImports(
+      layer === 'repositories'
+        ? [layering, modelSdkAccess, modelSdkPackage]
+        : [layering, databaseAccess, modelSdkAccess, modelSdkPackage],
+    ),
   };
 }
 
@@ -49,6 +68,8 @@ export default defineConfig(
       'no-console': 'error',
       '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
       '@typescript-eslint/consistent-type-imports': 'error',
+      // Express recognises an error handler by its four parameters, used or not.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {
@@ -58,7 +79,11 @@ export default defineConfig(
 
   {
     files: ['apps/api/src/**'],
-    ignores: ['apps/api/src/repositories/**'],
+    ignores: ['apps/api/src/repositories/**', 'apps/api/src/ai/**'],
+    rules: restrictImports([databaseAccess, modelSdkAccess, modelSdkPackage]),
+  },
+  {
+    files: ['apps/api/src/ai/**'],
     rules: restrictImports([databaseAccess]),
   },
   restrictLayer(

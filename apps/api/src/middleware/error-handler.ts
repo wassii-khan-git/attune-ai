@@ -1,5 +1,6 @@
 import type { ApiError } from '@attune/shared';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
+import { MulterError } from 'multer';
 import { ZodError } from 'zod';
 
 import { AppError } from '../lib/app-error.js';
@@ -54,6 +55,12 @@ export function toErrorResponse(error: unknown): ErrorResponse {
     );
   }
 
+  if (error instanceof MulterError) {
+    return error.code === 'LIMIT_FILE_SIZE'
+      ? respond(413, 'PAYLOAD_TOO_LARGE', 'The recording is too large.')
+      : respond(400, 'BAD_REQUEST', 'The upload could not be read.');
+  }
+
   const parserError = bodyParserErrorType(error);
   if (parserError === 'entity.too.large') {
     return respond(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large.');
@@ -66,10 +73,13 @@ export function toErrorResponse(error: unknown): ErrorResponse {
 }
 
 /** Last middleware in the chain: turns every error into the standard envelope. */
-export const errorHandler: ErrorRequestHandler = (error: unknown, req, res, next) => {
+export const errorHandler: ErrorRequestHandler = (error: unknown, req, res, _next) => {
   if (res.headersSent) {
-    // A response is already streaming, so the only option left is to close it.
-    next(error);
+    // A response is already streaming, so the only option left is to cut it short.
+    // Express's own fallback is not used here: it would print the error to the console,
+    // past the redacting logger.
+    req.log.error({ err: error }, 'error after the response started');
+    res.destroy();
     return;
   }
 

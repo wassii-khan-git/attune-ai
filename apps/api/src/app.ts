@@ -1,13 +1,16 @@
 import express, { Router, type Express } from 'express';
 
+import type { ScribeModel } from './ai/scribe-model.js';
 import { createAccountController } from './controllers/account.controller.js';
 import { createAuthController } from './controllers/auth.controller.js';
+import { createGenerationController } from './controllers/generation.controller.js';
 import { createHealthController } from './controllers/health.controller.js';
 import { createVisitController } from './controllers/visit.controller.js';
 import { createFieldCipher } from './lib/field-cipher.js';
 import type { Logger } from './lib/logger.js';
 import { createPasswordHasher, DEFAULT_BCRYPT_COST } from './lib/password-hasher.js';
 import { createSessionCookies } from './lib/session-cookies.js';
+import { audioUpload } from './middleware/audio-upload.js';
 import { authenticate } from './middleware/authenticate.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { rateLimit } from './middleware/rate-limit.js';
@@ -21,6 +24,7 @@ import { createVisitRouter } from './routes/visit.routes.js';
 import { createAccountService } from './services/account.service.js';
 import { createAuditService } from './services/audit.service.js';
 import { createAuthService } from './services/auth.service.js';
+import { createGenerationService } from './services/generation.service.js';
 import { createHealthService, type ReadinessCheck } from './services/health.service.js';
 import { createRateLimitService, type RateLimitPolicy } from './services/rate-limit.service.js';
 import { createTokenService } from './services/token.service.js';
@@ -45,6 +49,10 @@ export type AppDependencies = {
   accessTokenSecret: string;
   /** 32 bytes. Encrypts transcripts and notes at field level. */
   fieldEncryptionKey: Buffer;
+  /** Transcribes audio and drafts notes. Gemini in production, a scripted model in tests. */
+  scribeModel: ScribeModel;
+  /** Pause before a retried model call. Injectable so tests do not wait. */
+  sleep?: (ms: number) => Promise<void>;
   /** False only for local development over plain HTTP. */
   secureCookies: boolean;
   /** Lowered in tests, where hashing speed matters more than strength. */
@@ -65,6 +73,8 @@ export function createApp({
   trustProxyHops,
   accessTokenSecret,
   fieldEncryptionKey,
+  scribeModel,
+  sleep,
   secureCookies,
   passwordHashCost = DEFAULT_BCRYPT_COST,
   now = () => new Date(),
@@ -108,19 +118,27 @@ export function createApp({
       },
     }),
   );
+  const cipher = createFieldCipher(fieldEncryptionKey);
   v1.use(
     '/visits',
-    createVisitRouter(
-      createVisitController(
-        createVisitService({
+    createVisitRouter({
+      visits: createVisitController(
+        createVisitService({ visits: repositories.visits, cipher, audit, now }),
+      ),
+      generation: createGenerationController(
+        createGenerationService({
           visits: repositories.visits,
-          cipher: createFieldCipher(fieldEncryptionKey),
+          usage: repositories.usage,
+          model: scribeModel,
+          cipher,
           audit,
           now,
+          ...(sleep === undefined ? {} : { sleep }),
         }),
       ),
-      requireUser,
-    ),
+      authenticate: requireUser,
+      audioUpload: audioUpload(),
+    }),
   );
   v1.use(
     '/account',
