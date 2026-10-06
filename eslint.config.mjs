@@ -1,6 +1,9 @@
 import eslint from '@eslint/js';
+import nextPlugin from '@next/eslint-plugin-next';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import prettier from 'eslint-config-prettier/flat';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 /** Only repositories may import the database client, so queries cannot leak into other layers. */
@@ -51,6 +54,8 @@ export default defineConfig(
     '**/coverage/**',
     '**/.turbo/**',
     '**/src/generated/**',
+    '**/.next/**',
+    '**/next-env.d.ts',
   ]),
 
   eslint.configs.recommended,
@@ -79,6 +84,18 @@ export default defineConfig(
   {
     files: ['**/*.{js,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
+  },
+  {
+    // Next.js, React hooks and accessibility rules for the web app. The plugins are
+    // wired individually because Next's bundled preset does not load under ESLint 10.
+    files: ['apps/web/**/*.{ts,tsx}'],
+    plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks, 'jsx-a11y': jsxA11y },
+    settings: { next: { rootDir: 'apps/web' } },
+    rules: {
+      ...nextPlugin.configs['core-web-vitals'].rules,
+      ...reactHooks.configs.recommended.rules,
+      ...jsxA11y.flatConfigs.recommended.rules,
+    },
   },
   {
     // A command-line report over synthetic data: printing to the terminal is its purpose.

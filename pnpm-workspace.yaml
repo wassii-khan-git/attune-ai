@@ -3,12 +3,13 @@ packages:
   - packages/*
 
 # Dependency install scripts stay blocked. These packages work without theirs:
-# esbuild's binary arrives as an optional dependency, and the Prisma CLI fetches
-# its schema engine on first use.
+# the binaries of esbuild and unrs-resolver arrive as optional dependencies, and
+# the Prisma CLI fetches its schema engine on first use.
 allowBuilds:
   '@prisma/engines': false
   esbuild: false
   prisma: false
+  unrs-resolver: false
 
 # One Zod version for every workspace: schemas cross package boundaries,
 # so two copies would break instanceof checks and type identity.

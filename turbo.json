@@ -9,7 +9,8 @@
     },
     "build": {
       "dependsOn": ["^build", "generate"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["API_URL", "WEB_PROXY_SECRET"]
     },
     "dev": {
       "dependsOn": ["^build", "generate"],
