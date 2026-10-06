@@ -1,3 +1,5 @@
+import type { Express } from 'express';
+
 import { createGeminiScribeModel } from './ai/gemini-scribe-model.js';
 import { createApp } from './create-app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
@@ -30,7 +32,10 @@ installCrashHandlers(logger);
 const prisma = createPrismaClient(config.DATABASE_URL);
 const healthRepository = createHealthRepository(prisma);
 
-const app = createApp({
+// Vercel picks its entry point by looking, at a few fixed paths, for a file that
+// imports express and starts a server. This file is at one of those paths; the
+// type import above is what lets the platform recognise it.
+const app: Express = createApp({
   logger,
   repositories: createRepositories(prisma),
   readinessChecks: [{ name: 'database', run: healthRepository.pingDatabase }],
