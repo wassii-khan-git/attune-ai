@@ -58,6 +58,17 @@ export const authResponseSchema = z.object({
 });
 export type AuthResponse = z.infer<typeof authResponseSchema>;
 
+/**
+ * `GET /v1/auth/session`: asks "is anyone signed in?" without treating "no" as
+ * an error, so a page can check on load without a failed request.
+ */
+export const sessionResponseSchema = z.object({
+  user: userSchema.nullable(),
+  /** True when nobody is signed in but a refresh token is present, so renewing is worth a try. */
+  canRefresh: z.boolean(),
+});
+export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+
 export const meResponseSchema = z.object({
   user: userSchema,
 });

@@ -34,6 +34,8 @@ export type AuthService = {
   /** Idempotent: an unknown, expired or already revoked token is not an error. */
   logout: (refreshToken: string | undefined) => Promise<void>;
   getUser: (userId: string) => Promise<User>;
+  /** The user an access token belongs to, or null if the token is missing, invalid or orphaned. Never throws for those. */
+  findSessionUser: (accessToken: string | undefined) => Promise<User | null>;
 };
 
 export type AuthServiceDependencies = {
@@ -243,6 +245,20 @@ export function createAuthService({
         resourceType: 'USER',
         resourceId: stored.userId,
       });
+    },
+
+    findSessionUser: async (accessToken) => {
+      if (accessToken === undefined) {
+        return null;
+      }
+      let userId: string;
+      try {
+        ({ userId } = await tokens.verifyAccessToken(accessToken));
+      } catch {
+        return null;
+      }
+      const record = await users.findById(userId);
+      return record === null ? null : toUser(record);
     },
 
     getUser: async (userId) => {

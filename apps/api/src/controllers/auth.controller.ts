@@ -4,6 +4,7 @@ import {
   registerRequestSchema,
   type AuthResponse,
   type MeResponse,
+  type SessionResponse,
 } from '@attune/shared';
 import type { Request, Response } from 'express';
 
@@ -22,6 +23,7 @@ export type AuthController = {
   refresh: Handler;
   logout: Handler;
   me: Handler;
+  session: Handler;
 };
 
 const TOKEN_TRANSPORT_HEADER = 'x-token-transport';
@@ -87,6 +89,20 @@ export function createAuthController(
       await service.logout(body.refreshToken ?? cookies.read(req).refreshToken);
       cookies.clear(res);
       res.status(204).end();
+    },
+
+    session: async (req, res) => {
+      const header = req.get('authorization');
+      const stored = cookies.read(req);
+      const accessToken =
+        header?.startsWith('Bearer ') === true ? header.slice(7) : stored.accessToken;
+
+      const user = await service.findSessionUser(accessToken);
+      const body: SessionResponse = {
+        user,
+        canRefresh: user === null && stored.refreshToken !== undefined,
+      };
+      res.set('Cache-Control', 'no-store').json(body);
     },
 
     me: async (req, res) => {

@@ -66,6 +66,13 @@ export const envSchema = z
     CRON_SECRET: secret,
 
     /**
+     * Shared with the web app, which sends it with each request it forwards.
+     * When it matches, the API takes the client address from the web app's
+     * header. Unset means that header is never believed.
+     */
+    WEB_PROXY_SECRET: secret.optional(),
+
+    /**
      * Generations allowed per UTC day across all users. The model runs on one
      * shared free-tier key, so this is what stops a single abuser from using it up.
      */

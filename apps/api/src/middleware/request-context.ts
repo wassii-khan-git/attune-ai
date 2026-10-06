@@ -36,10 +36,13 @@ export function requestContext(logger: Logger): RequestHandler {
     res.set('X-Request-Id', req.id);
 
     const startedAt = performance.now();
+    // Read now: while a mounted router handles the request, Express shortens
+    // `req.path` to the part after the mount point.
+    const path = req.path.slice(0, MAX_LOGGED_PATH_LENGTH);
     res.on('finish', () => {
       const summary = {
         method: req.method,
-        path: req.path.slice(0, MAX_LOGGED_PATH_LENGTH),
+        path,
         status: res.statusCode,
         durationMs: Math.round(performance.now() - startedAt),
       };

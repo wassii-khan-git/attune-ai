@@ -38,6 +38,7 @@ const app = createApp({
   trustProxyHops: config.TRUST_PROXY_HOPS,
   accessTokenSecret: config.JWT_ACCESS_SECRET,
   cronSecret: config.CRON_SECRET,
+  ...(config.WEB_PROXY_SECRET === undefined ? {} : { webProxySecret: config.WEB_PROXY_SECRET }),
   fieldEncryptionKey: Buffer.from(config.ENCRYPTION_KEY, 'base64'),
   scribeModel: createGeminiScribeModel({
     apiKey: config.GOOGLE_GENERATIVE_AI_API_KEY,
@@ -53,3 +54,5 @@ app.listen(config.PORT, (error) => {
   }
   logger.info({ port: config.PORT }, 'API listening');
 });
+
+export default app;

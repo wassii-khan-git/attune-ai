@@ -28,6 +28,8 @@ export function createAuthRouter({
   router.post('/refresh', limiters.session, controller.refresh);
   router.post('/logout', limiters.session, controller.logout);
   router.get('/me', authenticate, controller.me);
+  // Open to everyone: it answers "nobody" with a 200, so a page can ask on load.
+  router.get('/session', controller.session);
 
   return router;
 }

@@ -13,6 +13,7 @@ import { createPasswordHasher, DEFAULT_BCRYPT_COST } from './lib/password-hasher
 import { createSessionCookies } from './lib/session-cookies.js';
 import { audioUpload } from './middleware/audio-upload.js';
 import { authenticate } from './middleware/authenticate.js';
+import { clientAddress } from './middleware/client-address.js';
 import { requireCronSecret } from './middleware/cron-auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { byUser, rateLimit } from './middleware/rate-limit.js';
@@ -58,6 +59,8 @@ export type AppDependencies = {
   accessTokenSecret: string;
   /** Shared with the scheduler; guards the retention endpoint. */
   cronSecret: string;
+  /** Shared with the web app. Without it, a forwarded client address is never believed. */
+  webProxySecret?: string;
   /** 32 bytes. Encrypts transcripts and notes at field level. */
   fieldEncryptionKey: Buffer;
   /** Transcribes audio and drafts notes. Gemini in production, a scripted model in tests. */
@@ -86,6 +89,7 @@ export function createApp({
   trustProxyHops,
   accessTokenSecret,
   cronSecret,
+  webProxySecret,
   fieldEncryptionKey,
   scribeModel,
   sleep,
@@ -99,6 +103,7 @@ export function createApp({
 
   // First, so that every later middleware and every error has a request id and logger.
   app.use(requestContext(logger));
+  app.use(clientAddress(webProxySecret));
   app.use(securityHeaders());
   app.use(corsAllowlist(corsAllowedOrigins));
   app.use(express.json({ limit: JSON_BODY_LIMIT }));

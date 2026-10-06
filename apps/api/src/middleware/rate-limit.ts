@@ -6,11 +6,8 @@ import type { RateLimitPolicy, RateLimitService } from '../services/rate-limit.s
 /** Who a request is counted against. */
 export type RateLimitKey = (req: Request) => string;
 
-/**
- * The client address. `req.ip` honours the `trust proxy` setting, so behind a
- * platform proxy it is the real client, not the proxy. Used before sign-in.
- */
-export const byAddress: RateLimitKey = (req) => req.ip ?? 'unknown';
+/** The client's network address, as worked out by the `clientAddress` middleware. Used before sign-in. */
+export const byAddress: RateLimitKey = (req) => req.clientAddress;
 
 /** The signed-in user, so a limit follows the account and cannot be dodged by changing address. */
 export const byUser: RateLimitKey = (req) => req.auth?.userId ?? byAddress(req);

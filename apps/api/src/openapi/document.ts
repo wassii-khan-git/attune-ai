@@ -14,6 +14,7 @@ import {
   readinessResponseSchema,
   refreshRequestSchema,
   registerRequestSchema,
+  sessionResponseSchema,
   updateNoteRequestSchema,
   visitDetailResponseSchema,
   visitIdParamsSchema,
@@ -171,6 +172,18 @@ export const OPERATIONS: Operation[] = [
     summary: 'The signed-in user',
     auth: true,
     responses: { 200: { description: 'The caller.', schema: meResponseSchema } },
+  },
+  {
+    method: 'get',
+    path: '/v1/auth/session',
+    tag: 'Auth',
+    summary: 'Whether anyone is signed in',
+    description:
+      'Always answers 200. `user` is null when nobody is signed in; `canRefresh` then says whether a refresh token is present.',
+    auth: false,
+    responses: {
+      200: { description: 'The current session, if any.', schema: sessionResponseSchema },
+    },
   },
   {
     method: 'post',

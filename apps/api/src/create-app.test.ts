@@ -147,6 +147,16 @@ describe('request ids and request logging', () => {
     ]);
   });
 
+  it('logs the full path of a request handled by a mounted router', async () => {
+    const { app, logs } = createTestApp();
+
+    await request(app).post('/v1/auth/guest');
+
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({ method: 'POST', path: '/v1/auth/guest', status: 201 }),
+    );
+  });
+
   it('reuses a well-formed id sent by the caller', async () => {
     const { app } = createTestApp();
 

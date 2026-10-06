@@ -1,4 +1,9 @@
-import { apiErrorSchema, authResponseSchema, meResponseSchema } from '@attune/shared';
+import {
+  apiErrorSchema,
+  authResponseSchema,
+  meResponseSchema,
+  sessionResponseSchema,
+} from '@attune/shared';
 import request, { type Response } from 'supertest';
 import { describe, expect, it } from 'vitest';
 
@@ -373,6 +378,69 @@ describe('GET /v1/auth/me', () => {
   });
 });
 
+describe('GET /v1/auth/session', () => {
+  const session = async (call: request.Test) => sessionResponseSchema.parse((await call).body);
+
+  it('answers a visitor with 200 and no user, so a page load causes no failed request', async () => {
+    const { app } = createTestApp();
+
+    const response = await request(app).get('/v1/auth/session');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(sessionResponseSchema.parse(response.body)).toEqual({ user: null, canRefresh: false });
+  });
+
+  it('returns the user for a browser session and for a bearer token', async () => {
+    const { app } = createTestApp();
+    const agent = request.agent(app);
+    await agent.post('/v1/auth/register').send(credentials);
+    const native = await registerNative(app, { email: 'second@example.com' });
+
+    expect((await session(agent.get('/v1/auth/session'))).user?.email).toBe(credentials.email);
+    expect(
+      (
+        await session(
+          request(app)
+            .get('/v1/auth/session')
+            .set('Authorization', `Bearer ${native.tokens.accessToken}`),
+        )
+      ).user?.id,
+    ).toBe(native.user.id);
+  });
+
+  it('says a refresh is worth trying when the access token has expired but a refresh token remains', async () => {
+    const { app, clock } = createTestApp();
+    const agent = request.agent(app);
+    const registered = await agent.post('/v1/auth/register').send(credentials);
+    const refreshCookie = cookieNamed(registered, 'attune_refresh')?.split(';')[0] ?? '';
+    clock.advance(16 * MINUTE);
+
+    // The agent has dropped the expired access cookie; only the refresh cookie is sent.
+    const result = await session(request(app).get('/v1/auth/session').set('Cookie', refreshCookie));
+
+    expect(result).toEqual({ user: null, canRefresh: true });
+  });
+
+  it('treats a forged token and a deleted account as nobody, without an error', async () => {
+    const { app, repositories } = createTestApp();
+    const { tokens, user } = await registerNative(app);
+    repositories.users.remove(user.id);
+
+    const forged = await request(app)
+      .get('/v1/auth/session')
+      .set('Cookie', 'attune_access=not-a-token');
+    const orphaned = await request(app)
+      .get('/v1/auth/session')
+      .set('Authorization', `Bearer ${tokens.accessToken}`);
+
+    expect(forged.status).toBe(200);
+    expect(sessionResponseSchema.parse(forged.body).user).toBeNull();
+    expect(orphaned.status).toBe(200);
+    expect(sessionResponseSchema.parse(orphaned.body).user).toBeNull();
+  });
+});
+
 describe('POST /v1/auth/refresh', () => {
   it('issues a new session and retires the old refresh token', async () => {
     const { app } = createTestApp();
@@ -552,6 +620,37 @@ describe('rate limiting', () => {
 
     expect((await guestFrom('203.0.113.10')).status).toBe(429);
     expect((await guestFrom('203.0.113.11')).status).toBe(201);
+  });
+});
+
+describe('rate limiting behind the web app', () => {
+  const secret = 'test-only-web-proxy-secret-0123456789abc';
+  const guestFor = (app: Parameters<typeof request>[0], address: string, proxySecret = secret) =>
+    request(app)
+      .post('/v1/auth/guest')
+      .set('x-attune-proxy-secret', proxySecret)
+      .set('x-attune-client-ip', address);
+
+  it('counts each browser separately when the web app vouches for its address', async () => {
+    const { app } = createTestApp({ webProxySecret: secret });
+    for (let i = 0; i < 5; i++) {
+      await guestFor(app, '203.0.113.10');
+    }
+
+    expect((await guestFor(app, '203.0.113.10')).status).toBe(429);
+    expect((await guestFor(app, '203.0.113.11')).status).toBe(201);
+  });
+
+  it('does not let a caller without the secret pick its own address', async () => {
+    const { app } = createTestApp({ webProxySecret: secret });
+    for (let i = 0; i < 5; i++) {
+      await guestFor(app, `198.51.100.${String(i)}`, 'a-guess-at-the-secret-a-guess-at-it');
+    }
+
+    // Five different claimed addresses, one real connection: the limit still applies.
+    expect(
+      (await guestFor(app, '198.51.100.99', 'a-guess-at-the-secret-a-guess-at-it')).status,
+    ).toBe(429);
   });
 });
 
