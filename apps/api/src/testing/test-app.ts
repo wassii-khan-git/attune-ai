@@ -6,6 +6,7 @@ import { captureLogs, type LogCapture } from './log-capture.js';
 
 export const ALLOWED_ORIGIN = 'https://app.example.com';
 export const TEST_ACCESS_TOKEN_SECRET = 'test-only-access-token-secret-0123456789';
+export const TEST_FIELD_ENCRYPTION_KEY = Buffer.alloc(32, 7);
 
 export type TestClock = {
   now: () => Date;
@@ -43,6 +44,7 @@ export function createTestApp(overrides: Partial<AppDependencies> = {}): TestApp
     corsAllowedOrigins: [ALLOWED_ORIGIN],
     trustProxyHops: 0,
     accessTokenSecret: TEST_ACCESS_TOKEN_SECRET,
+    fieldEncryptionKey: TEST_FIELD_ENCRYPTION_KEY,
     secureCookies: false,
     // The lowest cost bcrypt allows keeps the suite fast.
     passwordHashCost: 4,

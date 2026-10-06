@@ -7,9 +7,11 @@
 - Phase 1, Step 1.4: security baseline (helmet, CORS allowlist, pino logger with redaction, request ids, error envelope, audit service). Done before 1.3 because auth depends on it.
 - Phase 1, Step 1.3: auth (register, login, guest, refresh with rotation, logout, `GET /v1/auth/me`, Postgres-backed rate limiting)
 
+- Phase 1, Step 1.5: visits (create, list with title search and cursor pagination, get, replace note, delete) and account deletion
+
 ## Next
 
-- Phase 1, Step 1.5: visits CRUD
+- Phase 1, Step 1.6: AI pipeline
 
 ## Notes / decisions
 
@@ -51,7 +53,23 @@
 - Passwords use bcrypt cost 12 through `bcryptjs` (pure JavaScript, no native build). Length 10 to 72; bcrypt ignores input past 72 bytes.
 - Rate limits (per client address, fixed window, counters in `rate_limit_buckets`): register and login 10 per 5 min, refresh and logout 60 per 5 min, guest 5 per hour.
 
+### Visits
+
+- Routes: `POST /v1/visits`, `GET /v1/visits?q=&cursor=&limit=`, `GET /v1/visits/:id`, `PUT /v1/visits/:id/note`, `DELETE /v1/visits/:id`, `DELETE /v1/account`.
+- Ownership is part of every query (`where: { id, userId }`). Another user's visit answers 404, the same as a missing one. `DELETE` always answers 204 and only audits when a row was removed.
+- Only `GET /v1/visits/:id` decrypts, and it writes a `VISIT_VIEWED` audit row. Lists select no encrypted columns.
+- Transcript and note are stored as encrypted JSON. Always build the context with `visitFieldContext(visitId, 'transcript' | 'note')`.
+- `PUT .../note` answers 409 while the status is `PROCESSING`, so the generation step cannot overwrite an edit unnoticed. Step 1.6 must set `PROCESSING` before it starts and `READY` or `FAILED` when it ends.
+- `soapNoteSchema` and `transcriptSchema` live in `packages/shared`. The speaker label is a free string for now; step 1.6 may narrow it.
+- Consent is given at creation (`consentGiven: true`) and timestamped by the server.
+
+### Testing
+
+- API tests run the real app on the in-memory repositories in `src/testing`. Nothing automated exercises the Prisma repositories yet: they were checked by hand against Neon, which is how the unescaped LIKE wildcard in title search was found. Step 1.7 should add integration tests for the repositories, including that search.
+
 ### To carry into later steps
+
+- Step 1.8 (threat model): account deletion does not ask for the password again; registration reveals whether an email is taken; rate limits are per address only.
 
 - Step 1.7: set `TRUST_PROXY_HOPS=1` on Vercel, otherwise every visitor shares one rate-limit bucket. Have the retention cron also delete `rate_limit_buckets` rows older than a day and expired `refresh_tokens`.
 - Step 2.1: the web app must call the API through a same-origin proxy that keeps the `/v1/...` paths (a Next.js rewrite). Two `*.vercel.app` hosts are different sites, so SameSite cookies would not be sent between them, and the refresh cookie is scoped to `/v1/auth`.

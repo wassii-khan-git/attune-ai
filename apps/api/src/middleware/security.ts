@@ -36,7 +36,7 @@ export function corsAllowlist(allowedOrigins: readonly string[]): RequestHandler
       callback(null, origin !== undefined && allowed.has(origin));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
     exposedHeaders: ['X-Request-Id', 'Retry-After'],
     maxAge: CORS_PREFLIGHT_MAX_AGE_SEC,

@@ -9,6 +9,7 @@ export const errorCodeSchema = z.enum([
   'FORBIDDEN',
   'NOT_FOUND',
   'EMAIL_TAKEN',
+  'CONFLICT',
   'PAYLOAD_TOO_LARGE',
   'RATE_LIMITED',
   'INTERNAL_ERROR',

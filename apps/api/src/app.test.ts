@@ -124,7 +124,7 @@ describe('CORS', () => {
       .set('Access-Control-Request-Method', 'POST');
 
     expect(response.status).toBe(204);
-    expect(response.headers['access-control-allow-methods']).toBe('GET,POST,PATCH,DELETE');
+    expect(response.headers['access-control-allow-methods']).toBe('GET,POST,PUT,DELETE');
   });
 });
 

@@ -12,6 +12,11 @@ import {
   type UserRecord,
   type UserRepository,
 } from '../repositories/user.repository.js';
+import type {
+  VisitRecord,
+  VisitRepository,
+  VisitSummaryRecord,
+} from '../repositories/visit.repository.js';
 
 /**
  * In-memory stand-ins that keep the same contracts as the Prisma repositories,
@@ -39,8 +44,22 @@ export type InMemoryUserRepository = UserRepository & {
   remove: (id: string) => void;
 };
 
-export function createInMemoryUserRepository(now: () => Date): InMemoryUserRepository {
+/** `onDelete` stands in for the database's ON DELETE CASCADE. */
+export function createInMemoryUserRepository(
+  now: () => Date,
+  onDelete: (userId: string) => void = () => undefined,
+): InMemoryUserRepository {
   const records: UserRecord[] = [];
+
+  const remove = (id: string): boolean => {
+    const index = records.findIndex((record) => record.id === id);
+    if (index === -1) {
+      return false;
+    }
+    records.splice(index, 1);
+    onDelete(id);
+    return true;
+  };
 
   const add = (fields: Pick<UserRecord, 'email' | 'passwordHash' | 'isGuest'>): UserRecord => {
     const record: UserRecord = { id: randomUUID(), role: 'USER', createdAt: now(), ...fields };
@@ -51,11 +70,9 @@ export function createInMemoryUserRepository(now: () => Date): InMemoryUserRepos
   return {
     records,
     remove: (id) => {
-      const index = records.findIndex((record) => record.id === id);
-      if (index !== -1) {
-        records.splice(index, 1);
-      }
+      remove(id);
     },
+    delete: (id) => Promise.resolve(remove(id)),
     createRegistered: ({ email, passwordHash }) => {
       if (records.some((record) => record.email === email)) {
         return Promise.reject(new EmailTakenError());
@@ -73,12 +90,16 @@ type StoredRefreshToken = RefreshTokenRecord & { tokenHash: string };
 
 export type InMemoryRefreshTokenRepository = RefreshTokenRepository & {
   readonly records: readonly StoredRefreshToken[];
+  removeForUser: (userId: string) => void;
 };
 
 export function createInMemoryRefreshTokenRepository(): InMemoryRefreshTokenRepository {
   const records: StoredRefreshToken[] = [];
   return {
     records,
+    removeForUser: (userId) => {
+      removeWhere(records, (record) => record.userId === userId);
+    },
     create: (input) => {
       records.push({ id: randomUUID(), revokedAt: null, ...input });
       return Promise.resolve();
@@ -118,17 +139,119 @@ export function createInMemoryRateLimitRepository(): RateLimitRepository {
   };
 }
 
+export type InMemoryVisitRepository = VisitRepository & {
+  readonly records: readonly VisitRecord[];
+  /** Test hook: changes a stored visit directly, as the generation pipeline will. */
+  patch: (id: string, changes: Partial<VisitRecord>) => void;
+  removeForUser: (userId: string) => void;
+};
+
+function toSummaryRecord(record: VisitRecord): VisitSummaryRecord {
+  const { id, userId, title, status, consentAt, durationSec, createdAt, updatedAt } = record;
+  return { id, userId, title, status, consentAt, durationSec, createdAt, updatedAt };
+}
+
+export function createInMemoryVisitRepository(now: () => Date): InMemoryVisitRepository {
+  const records: VisitRecord[] = [];
+  const owned = (id: string, userId: string): VisitRecord | undefined =>
+    records.find((record) => record.id === id && record.userId === userId);
+
+  return {
+    records,
+    patch: (id, changes) => {
+      const record = records.find((candidate) => candidate.id === id);
+      if (record !== undefined) {
+        Object.assign(record, changes);
+      }
+    },
+    removeForUser: (userId) => {
+      removeWhere(records, (record) => record.userId === userId);
+    },
+    create: (input) => {
+      const record: VisitRecord = {
+        id: randomUUID(),
+        status: 'DRAFT',
+        durationSec: null,
+        transcriptEnc: null,
+        noteEnc: null,
+        createdAt: now(),
+        updatedAt: now(),
+        ...input,
+      };
+      records.push(record);
+      return Promise.resolve(toSummaryRecord(record));
+    },
+    list: ({ userId, titleContains, after, take }) => {
+      const needle = titleContains?.toLowerCase();
+      const page = records
+        .filter((record) => record.userId === userId)
+        .filter((record) => needle === undefined || record.title.toLowerCase().includes(needle))
+        .filter(
+          (record) =>
+            after === undefined ||
+            record.createdAt.getTime() < after.createdAt.getTime() ||
+            (record.createdAt.getTime() === after.createdAt.getTime() && record.id < after.id),
+        )
+        .sort(
+          (a, b) =>
+            b.createdAt.getTime() - a.createdAt.getTime() ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        )
+        .slice(0, take);
+      return Promise.resolve(page.map(toSummaryRecord));
+    },
+    findOwned: (id, userId) => {
+      const record = owned(id, userId);
+      return Promise.resolve(record === undefined ? null : { ...record });
+    },
+    updateNoteUnlessProcessing: (id, userId, noteEnc) => {
+      const record = owned(id, userId);
+      if (record === undefined || record.status === 'PROCESSING') {
+        return Promise.resolve(null);
+      }
+      record.noteEnc = noteEnc;
+      record.updatedAt = now();
+      return Promise.resolve(toSummaryRecord(record));
+    },
+    deleteOwned: (id, userId) =>
+      Promise.resolve(
+        removeWhere(records, (record) => record.id === id && record.userId === userId) > 0,
+      ),
+  };
+}
+
+/** Removes matching items in place and returns how many were removed. */
+function removeWhere<T>(items: T[], matches: (item: T) => boolean): number {
+  let removed = 0;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item !== undefined && matches(item)) {
+      items.splice(index, 1);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 export type InMemoryRepositories = Repositories & {
   users: InMemoryUserRepository;
   refreshTokens: InMemoryRefreshTokenRepository;
   audit: InMemoryAuditRepository;
+  visits: InMemoryVisitRepository;
 };
 
 export function createInMemoryRepositories(now: () => Date): InMemoryRepositories {
+  const refreshTokens = createInMemoryRefreshTokenRepository();
+  const visits = createInMemoryVisitRepository(now);
+
   return {
-    users: createInMemoryUserRepository(now),
-    refreshTokens: createInMemoryRefreshTokenRepository(),
+    users: createInMemoryUserRepository(now, (userId) => {
+      refreshTokens.removeForUser(userId);
+      visits.removeForUser(userId);
+    }),
+    refreshTokens,
     audit: createInMemoryAuditRepository(),
     rateLimits: createInMemoryRateLimitRepository(),
+    visits,
   };
 }

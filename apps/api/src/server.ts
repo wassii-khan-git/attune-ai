@@ -34,6 +34,7 @@ const app = createApp({
   corsAllowedOrigins: config.CORS_ALLOWED_ORIGINS,
   trustProxyHops: config.TRUST_PROXY_HOPS,
   accessTokenSecret: config.JWT_ACCESS_SECRET,
+  fieldEncryptionKey: Buffer.from(config.ENCRYPTION_KEY, 'base64'),
   secureCookies: config.NODE_ENV !== 'development',
 });
 

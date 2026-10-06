@@ -1,7 +1,10 @@
 import express, { Router, type Express } from 'express';
 
+import { createAccountController } from './controllers/account.controller.js';
 import { createAuthController } from './controllers/auth.controller.js';
 import { createHealthController } from './controllers/health.controller.js';
+import { createVisitController } from './controllers/visit.controller.js';
+import { createFieldCipher } from './lib/field-cipher.js';
 import type { Logger } from './lib/logger.js';
 import { createPasswordHasher, DEFAULT_BCRYPT_COST } from './lib/password-hasher.js';
 import { createSessionCookies } from './lib/session-cookies.js';
@@ -11,13 +14,17 @@ import { rateLimit } from './middleware/rate-limit.js';
 import { requestContext } from './middleware/request-context.js';
 import { corsAllowlist, securityHeaders } from './middleware/security.js';
 import type { Repositories } from './repositories/index.js';
+import { createAccountRouter } from './routes/account.routes.js';
 import { createAuthRouter } from './routes/auth.routes.js';
 import { createHealthRouter } from './routes/health.routes.js';
+import { createVisitRouter } from './routes/visit.routes.js';
+import { createAccountService } from './services/account.service.js';
 import { createAuditService } from './services/audit.service.js';
 import { createAuthService } from './services/auth.service.js';
 import { createHealthService, type ReadinessCheck } from './services/health.service.js';
 import { createRateLimitService, type RateLimitPolicy } from './services/rate-limit.service.js';
 import { createTokenService } from './services/token.service.js';
+import { createVisitService } from './services/visit.service.js';
 
 /** JSON bodies are small (credentials, a note edit). Audio takes a separate multipart route. */
 const JSON_BODY_LIMIT = '100kb';
@@ -36,6 +43,8 @@ export type AppDependencies = {
   /** See `TRUST_PROXY_HOPS` in the env schema. */
   trustProxyHops: number;
   accessTokenSecret: string;
+  /** 32 bytes. Encrypts transcripts and notes at field level. */
+  fieldEncryptionKey: Buffer;
   /** False only for local development over plain HTTP. */
   secureCookies: boolean;
   /** Lowered in tests, where hashing speed matters more than strength. */
@@ -55,6 +64,7 @@ export function createApp({
   corsAllowedOrigins,
   trustProxyHops,
   accessTokenSecret,
+  fieldEncryptionKey,
   secureCookies,
   passwordHashCost = DEFAULT_BCRYPT_COST,
   now = () => new Date(),
@@ -97,6 +107,27 @@ export function createApp({
         guest: rateLimit(rateLimits, RATE_LIMITS.guest),
       },
     }),
+  );
+  v1.use(
+    '/visits',
+    createVisitRouter(
+      createVisitController(
+        createVisitService({
+          visits: repositories.visits,
+          cipher: createFieldCipher(fieldEncryptionKey),
+          audit,
+          now,
+        }),
+      ),
+      requireUser,
+    ),
+  );
+  v1.use(
+    '/account',
+    createAccountRouter(
+      createAccountController(createAccountService(repositories.users, audit), cookies),
+      requireUser,
+    ),
   );
   app.use('/v1', v1);
 
