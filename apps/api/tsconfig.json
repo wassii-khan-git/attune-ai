@@ -1,6 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // These four repeat the base config on purpose. Vercel's builder reads this
+    // file before following "extends", and when it finds no "module" here it
+    // switches strict mode off, which changes the types Zod infers and fails
+    // the deployment's type check. Stating them here keeps that check strict.
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+
     "types": ["node"],
     "noEmit": true
   },
