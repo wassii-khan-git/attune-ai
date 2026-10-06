@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+# esbuild's platform binary arrives as an optional dependency; its install
+# script is only an optimisation, so it stays blocked like any other.
+allowBuilds:
+  esbuild: false
+
+# One Zod version for every workspace: schemas cross package boundaries,
+# so two copies would break instanceof checks and type identity.
+catalog:
+  zod: ^4.6.5
