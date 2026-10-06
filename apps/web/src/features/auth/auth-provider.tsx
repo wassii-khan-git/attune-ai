@@ -21,8 +21,13 @@ import { createSessionStore, type SessionStore } from '@/lib/session/session-sto
 /** Renew this long before the access token expires, so no request meets an expired one. */
 const REFRESH_AHEAD_MS = 60_000;
 
-/** Why there is no session, so a page can explain it. */
-export type SignedOutReason = 'idle' | 'signed-out';
+/**
+ * Why there is no session, so a page can explain it.
+ * - `idle`: 15 minutes passed without input.
+ * - `expired`: the session could not be renewed.
+ * - `signed-out`: the user signed out, here or in another tab.
+ */
+export type SignedOutReason = 'idle' | 'expired' | 'signed-out';
 
 export type AuthState =
   /** The first check of an existing session has not finished. */
@@ -184,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isIdle(store.getLastActivity(), Date.now(), IDLE_LIMIT_MS)) {
           return;
         }
-        refresh(expiry).then(scheduleRenewal, () => void endSession('signed-out'));
+        refresh(expiry).then(scheduleRenewal, () => void endSession('expired'));
       }, delay);
     };
     scheduleRenewal();
