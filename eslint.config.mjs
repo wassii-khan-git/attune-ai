@@ -3,24 +3,36 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import prettier from 'eslint-config-prettier/flat';
 import tseslint from 'typescript-eslint';
 
+/** Only repositories may import the database client, so queries cannot leak into other layers. */
+const databaseAccess = {
+  group: ['**/generated/prisma/**', '@prisma/*', 'pg'],
+  message: 'Only files in src/repositories may talk to the database.',
+};
+
+function restrictImports(patterns) {
+  return { 'no-restricted-imports': ['error', { patterns }] };
+}
+
 /**
  * Enforces the API layering (routes -> controllers -> services -> repositories)
  * by banning imports that skip a layer or point back up the stack.
  */
 function restrictLayer(layer, forbidden, message) {
+  const layering = { group: forbidden.map((name) => `**/${name}/**`), message };
   return {
     files: [`apps/api/src/${layer}/**`],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        { patterns: [{ group: forbidden.map((name) => `**/${name}/**`), message }] },
-      ],
-    },
+    rules: restrictImports(layer === 'repositories' ? [layering] : [layering, databaseAccess]),
   };
 }
 
 export default defineConfig(
-  globalIgnores(['**/node_modules/**', '**/dist/**', '**/coverage/**', '**/.turbo/**']),
+  globalIgnores([
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/coverage/**',
+    '**/.turbo/**',
+    '**/src/generated/**',
+  ]),
 
   eslint.configs.recommended,
   tseslint.configs.strictTypeChecked,
@@ -44,6 +56,11 @@ export default defineConfig(
     extends: [tseslint.configs.disableTypeChecked],
   },
 
+  {
+    files: ['apps/api/src/**'],
+    ignores: ['apps/api/src/repositories/**'],
+    rules: restrictImports([databaseAccess]),
+  },
   restrictLayer(
     'routes',
     ['services', 'repositories'],

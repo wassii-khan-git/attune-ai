@@ -18,3 +18,6 @@ coverage/
 # OS and editor noise
 .DS_Store
 *.log
+
+# Generated Prisma client
+apps/api/src/generated/

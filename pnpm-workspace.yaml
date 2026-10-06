@@ -2,10 +2,13 @@ packages:
   - apps/*
   - packages/*
 
-# esbuild's platform binary arrives as an optional dependency; its install
-# script is only an optimisation, so it stays blocked like any other.
+# Dependency install scripts stay blocked. These packages work without theirs:
+# esbuild's binary arrives as an optional dependency, and the Prisma CLI fetches
+# its schema engine on first use.
 allowBuilds:
+  '@prisma/engines': false
   esbuild: false
+  prisma: false
 
 # One Zod version for every workspace: schemas cross package boundaries,
 # so two copies would break instanceof checks and type identity.

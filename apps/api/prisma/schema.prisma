@@ -1,0 +1,144 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+
+  @@map("role")
+}
+
+enum VisitStatus {
+  /// Created, nothing generated yet.
+  DRAFT
+  /// A generation request is in flight.
+  PROCESSING
+  /// Transcript and note are stored.
+  READY
+  /// The last generation attempt failed; the visit can be processed again.
+  FAILED
+
+  @@map("visit_status")
+}
+
+enum AuditAction {
+  USER_REGISTERED
+  GUEST_CREATED
+  USER_LOGGED_IN
+  USER_LOGGED_OUT
+  ACCOUNT_DELETED
+  VISIT_CREATED
+  VISIT_VIEWED
+  VISIT_NOTE_UPDATED
+  VISIT_PROCESSED
+  VISIT_DELETED
+
+  @@map("audit_action")
+}
+
+enum AuditResourceType {
+  USER
+  VISIT
+
+  @@map("audit_resource_type")
+}
+
+/// An account. Guests are temporary accounts without credentials, purged after 24 hours.
+/// A CHECK constraint in the first migration guarantees that every other account
+/// has both an email and a password hash.
+model User {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  /// Stored lower-cased, so the unique index is effectively case-insensitive.
+  email        String?  @unique @db.VarChar(254)
+  passwordHash String?  @map("password_hash")
+  role         Role     @default(USER)
+  isGuest      Boolean  @default(false) @map("is_guest")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+  visits        Visit[]
+  usageCounters UsageCounter[]
+
+  /// Serves the retention job, which looks for guests older than 24 hours.
+  @@index([isGuest, createdAt])
+  @@map("users")
+}
+
+/// One issued refresh token. Only a hash is stored, so a database leak does not
+/// hand out usable sessions. Rotation revokes the row and inserts a new one.
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// One consultation. `transcriptEnc` and `noteEnc` hold AES-256-GCM envelopes
+/// produced by the field cipher; the plaintext never reaches the database.
+/// `title` stays in plaintext so it can be searched, and is still never logged.
+model Visit {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  title         String      @db.VarChar(200)
+  status        VisitStatus @default(DRAFT)
+  /// When the user confirmed consent to record. Generation is refused while this is null.
+  consentAt     DateTime?   @map("consent_at") @db.Timestamptz(3)
+  durationSec   Int?        @map("duration_sec")
+  transcriptEnc String?     @map("transcript_enc")
+  noteEnc       String?     @map("note_enc")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Serves the owner's visit list, newest first.
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("visits")
+}
+
+/// Who did what to which resource, and when. Rows are inserted and never changed.
+/// Every column is an identifier, an enum or a timestamp, so PHI cannot be written here.
+/// There is deliberately no foreign key to `users`: an audit row outlives the account it describes.
+model AuditEvent {
+  id           String            @id @default(uuid(7)) @db.Uuid
+  /// The acting user. Null when the system acted, for example the retention job.
+  userId       String?           @map("user_id") @db.Uuid
+  action       AuditAction
+  resourceType AuditResourceType @map("resource_type")
+  resourceId   String            @map("resource_id") @db.Uuid
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId, createdAt])
+  @@map("audit_events")
+}
+
+/// Generations per user per day, for the daily quota. The composite key lets the
+/// quota check and the increment happen in a single upsert.
+model UsageCounter {
+  userId String   @map("user_id") @db.Uuid
+  date   DateTime @db.Date
+  count  Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, date])
+  @@map("usage_counters")
+}

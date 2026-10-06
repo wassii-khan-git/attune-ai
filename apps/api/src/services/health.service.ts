@@ -1,6 +1,11 @@
 import type { LivenessResponse, ReadinessCheckStatus, ReadinessResponse } from '@attune/shared';
 
-const DEFAULT_CHECK_TIMEOUT_MS = 2_000;
+/**
+ * Long enough for a cold instance to open its first database connection (a TLS
+ * and auth handshake of about 2 s from a distant region), short enough that a
+ * hung dependency still answers well inside the platform's request limit.
+ */
+const DEFAULT_CHECK_TIMEOUT_MS = 5_000;
 
 /** A dependency the API cannot serve traffic without. `run` rejects when it is unreachable. */
 export type ReadinessCheck = {

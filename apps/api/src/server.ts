@@ -1,6 +1,8 @@
 /* eslint-disable no-console -- boot output only, and it carries no request data; the redacting logger replaces it in step 1.4 */
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
+import { createHealthRepository } from './repositories/health.repository.js';
+import { createPrismaClient } from './repositories/prisma.js';
 
 function loadConfigOrExit(): Config {
   try {
@@ -16,8 +18,11 @@ function loadConfigOrExit(): Config {
 
 const config = loadConfigOrExit();
 
-// The database readiness check is registered when Prisma arrives in step 1.2.
-const app = createApp({ readinessChecks: [] });
+const healthRepository = createHealthRepository(createPrismaClient(config.DATABASE_URL));
+
+const app = createApp({
+  readinessChecks: [{ name: 'database', run: healthRepository.pingDatabase }],
+});
 
 app.listen(config.PORT, (error) => {
   if (error) {
