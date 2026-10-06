@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createLogger } from './lib/logger.js';
 import { createHealthRepository } from './repositories/health.repository.js';
+import { createRepositories } from './repositories/index.js';
 import { createPrismaClient } from './repositories/prisma.js';
 
 function loadConfigOrExit(): Config {
@@ -23,12 +24,17 @@ function loadConfigOrExit(): Config {
 const config = loadConfigOrExit();
 const logger = createLogger({ level: config.LOG_LEVEL });
 
-const healthRepository = createHealthRepository(createPrismaClient(config.DATABASE_URL));
+const prisma = createPrismaClient(config.DATABASE_URL);
+const healthRepository = createHealthRepository(prisma);
 
 const app = createApp({
   logger,
-  corsAllowedOrigins: config.CORS_ALLOWED_ORIGINS,
+  repositories: createRepositories(prisma),
   readinessChecks: [{ name: 'database', run: healthRepository.pingDatabase }],
+  corsAllowedOrigins: config.CORS_ALLOWED_ORIGINS,
+  trustProxyHops: config.TRUST_PROXY_HOPS,
+  accessTokenSecret: config.JWT_ACCESS_SECRET,
+  secureCookies: config.NODE_ENV !== 'development',
 });
 
 app.listen(config.PORT, (error) => {

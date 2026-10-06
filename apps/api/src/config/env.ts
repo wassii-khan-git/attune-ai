@@ -47,6 +47,13 @@ export const envSchema = z.object({
 
   CORS_ALLOWED_ORIGINS: corsOrigins,
 
+  /**
+   * How many reverse proxies sit in front of the API. Rate limiting keys on the
+   * client address, which is only correct when this matches the deployment:
+   * 0 for a direct connection, 1 behind a platform proxy such as Vercel's.
+   */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+
   CRON_SECRET: secret,
 });
 

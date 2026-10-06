@@ -4,8 +4,13 @@ import { z } from 'zod';
 export const errorCodeSchema = z.enum([
   'BAD_REQUEST',
   'VALIDATION_ERROR',
-  'PAYLOAD_TOO_LARGE',
+  'UNAUTHENTICATED',
+  'INVALID_CREDENTIALS',
+  'FORBIDDEN',
   'NOT_FOUND',
+  'EMAIL_TAKEN',
+  'PAYLOAD_TOO_LARGE',
+  'RATE_LIMITED',
   'INTERNAL_ERROR',
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;

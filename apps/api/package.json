@@ -21,9 +21,12 @@
     "@attune/shared": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "bcryptjs": "^3.0.3",
+    "cookie": "^2.0.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "helmet": "^8.3.0",
+    "jose": "^6.2.12",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "zod": "catalog:"

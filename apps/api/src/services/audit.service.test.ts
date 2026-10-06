@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createInMemoryAuditRepository } from '../testing/in-memory-audit.repository.js';
+import { createInMemoryAuditRepository } from '../testing/in-memory-repositories.js';
 import { createAuditService } from './audit.service.js';
 
 const event = {

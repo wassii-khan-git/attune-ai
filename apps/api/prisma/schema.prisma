@@ -142,3 +142,17 @@ model UsageCounter {
   @@id([userId, date])
   @@map("usage_counters")
 }
+
+/// Request counters for rate limiting, one row per caller per time window.
+/// Serverless instances share no memory, so the count has to live in the database.
+/// `key` is a SHA-256 of the policy name and the caller's address; the raw address is not stored.
+model RateLimitBucket {
+  key         String   @db.Char(64)
+  windowStart DateTime @map("window_start") @db.Timestamptz(3)
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  /// Serves the cleanup of expired windows.
+  @@index([windowStart])
+  @@map("rate_limit_buckets")
+}

@@ -4,12 +4,12 @@
 
 - Phase 1, Step 1.1: monorepo scaffold (pnpm + Turborepo, `apps/api`, `packages/shared`, root ESLint/Prettier/tsconfig, validated config, `/health` and `/ready`, ADR 0001 and 0002)
 - Phase 1, Step 1.2: database schema (Prisma 7 on Neon, five models, first migration applied, AES-256-GCM field cipher with tests, `/ready` checks the database)
-
 - Phase 1, Step 1.4: security baseline (helmet, CORS allowlist, pino logger with redaction, request ids, error envelope, audit service). Done before 1.3 because auth depends on it.
+- Phase 1, Step 1.3: auth (register, login, guest, refresh with rotation, logout, `GET /v1/auth/me`, Postgres-backed rate limiting)
 
 ## Next
 
-- Phase 1, Step 1.3: auth
+- Phase 1, Step 1.5: visits CRUD
 
 ## Notes / decisions
 
@@ -41,3 +41,18 @@
 - Log through `req.log` (bound to the request id), never the root logger and never `console`. Request lines hold method, path, status and duration only. `src/lib/logger.ts` redacts sensitive keys and strips extra properties from errors; add any new sensitive key to `SENSITIVE_KEYS`.
 - `AuditService.record` rejects when the row cannot be written, and callers let that fail the request.
 - Tests build the real app with `createTestApp()` from `src/testing`, which also captures log output.
+
+### Auth
+
+- Access tokens are 15-minute HS256 JWTs (`jose`), verified without a database call, so a deleted account's token still passes `authenticate` until it expires. Handlers that must not serve a deleted account load the user.
+- Refresh tokens are random, stored as a SHA-256, valid 7 days (guests: until 24 h after the account was created) and rotated on every use. Replaying a retired token revokes every session of that user.
+- Browsers get `attune_access` (path `/`) and `attune_refresh` (path `/v1/auth`) as httpOnly, SameSite=Lax cookies. Native clients send `X-Token-Transport: body` and get the tokens in the response; that header is ignored whenever an `Origin` header is present.
+- Protect a route with the `requireUser` middleware built in `src/app.ts` and read the caller with `requireAuth(req)`.
+- Passwords use bcrypt cost 12 through `bcryptjs` (pure JavaScript, no native build). Length 10 to 72; bcrypt ignores input past 72 bytes.
+- Rate limits (per client address, fixed window, counters in `rate_limit_buckets`): register and login 10 per 5 min, refresh and logout 60 per 5 min, guest 5 per hour.
+
+### To carry into later steps
+
+- Step 1.7: set `TRUST_PROXY_HOPS=1` on Vercel, otherwise every visitor shares one rate-limit bucket. Have the retention cron also delete `rate_limit_buckets` rows older than a day and expired `refresh_tokens`.
+- Step 2.1: the web app must call the API through a same-origin proxy that keeps the `/v1/...` paths (a Next.js rewrite). Two `*.vercel.app` hosts are different sites, so SameSite cookies would not be sent between them, and the refresh cookie is scoped to `/v1/auth`.
+- Step 2.1: run one refresh at a time across tabs (for example with the Web Locks API). Two tabs refreshing with the same cookie look like a replay and sign the user out.
