@@ -16,6 +16,8 @@ export type RefreshTokenRepository = {
    */
   revokeIfActive: (id: string, now: Date) => Promise<boolean>;
   revokeAllForUser: (userId: string, now: Date) => Promise<void>;
+  /** Removes tokens that expired before `cutoff`. Returns how many were removed. */
+  deleteExpiredBefore: (cutoff: Date) => Promise<number>;
 };
 
 export function createRefreshTokenRepository(prisma: PrismaClient): RefreshTokenRepository {
@@ -43,6 +45,13 @@ export function createRefreshTokenRepository(prisma: PrismaClient): RefreshToken
         where: { userId, revokedAt: null },
         data: { revokedAt: now },
       });
+    },
+
+    deleteExpiredBefore: async (cutoff) => {
+      const { count } = await prisma.refreshToken.deleteMany({
+        where: { expiresAt: { lt: cutoff } },
+      });
+      return count;
     },
   };
 }

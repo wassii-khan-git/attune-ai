@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 
-import { createApp, type AppDependencies } from '../app.js';
+import { createApp, type AppDependencies } from '../create-app.js';
 import { createFakeScribeModel } from './fake-scribe-model.js';
 import { createInMemoryRepositories, type InMemoryRepositories } from './in-memory-repositories.js';
 import { captureLogs, type LogCapture } from './log-capture.js';
@@ -8,6 +8,7 @@ import { captureLogs, type LogCapture } from './log-capture.js';
 export const ALLOWED_ORIGIN = 'https://app.example.com';
 export const TEST_ACCESS_TOKEN_SECRET = 'test-only-access-token-secret-0123456789';
 export const TEST_FIELD_ENCRYPTION_KEY = Buffer.alloc(32, 7);
+export const TEST_CRON_SECRET = 'test-only-cron-secret-0123456789abcdef';
 
 export type TestClock = {
   now: () => Date;
@@ -45,6 +46,7 @@ export function createTestApp(overrides: Partial<AppDependencies> = {}): TestApp
     corsAllowedOrigins: [ALLOWED_ORIGIN],
     trustProxyHops: 0,
     accessTokenSecret: TEST_ACCESS_TOKEN_SECRET,
+    cronSecret: TEST_CRON_SECRET,
     fieldEncryptionKey: TEST_FIELD_ENCRYPTION_KEY,
     scribeModel: createFakeScribeModel(),
     sleep: () => Promise.resolve(),

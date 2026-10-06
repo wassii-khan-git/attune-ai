@@ -14,8 +14,10 @@ import { processingStaleBefore, visitFieldContext } from './visit.service.js';
 /** Generations per UTC day. Guests get fewer; the model runs on a free tier shared by everyone. */
 export const DAILY_GENERATION_LIMIT = { registered: 10, guest: 3 } as const;
 
-const TRANSCRIPTION_TIMEOUT_MS = 90_000;
-const NOTE_TIMEOUT_MS = 60_000;
+// Sized so that the worst case, both calls timing out and being retried once,
+// still ends inside the platform's 300-second request limit: 2 x 75 + 2 x 45 + pauses.
+const TRANSCRIPTION_TIMEOUT_MS = 75_000;
+const NOTE_TIMEOUT_MS = 45_000;
 const RETRY_BACKOFF_MS = 1_000;
 
 export type GenerationCaller = {

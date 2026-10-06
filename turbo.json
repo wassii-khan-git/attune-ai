@@ -24,6 +24,15 @@
     },
     "test": {
       "dependsOn": ["^build", "generate"]
+    },
+    "test:coverage": {
+      "dependsOn": ["^build", "generate"],
+      "outputs": ["coverage/**"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "passThroughEnv": ["TEST_DATABASE_URL"]
     }
   }
 }

@@ -13,9 +13,11 @@
 
 - Phase 1, Step 1.6b: AI evaluation (`pnpm eval`: five synthetic transcripts in `apps/api/eval`, checked for required facts, invented claims and "Not discussed" sections)
 
+- Phase 1, Step 1.7: docs, retention and CI (OpenAPI at `/docs` and `/openapi.json`, retention cron endpoint, `apps/api/vercel.json`, GitHub Actions for lint, typecheck, coverage, integration tests and audit, Dependabot, CodeQL)
+
 ## Next
 
-- Phase 1, Step 1.7: docs, retention and CI
+- Phase 1, Step 1.8: review and threat model (findings need the owner's approval before any fix)
 
 ## Notes / decisions
 
@@ -79,16 +81,31 @@
 
 - `pnpm eval` calls the live model (five requests) and is not part of CI. It evaluates note drafting only, because transcription needs audio. Checks are plain pattern matches in `eval/cases.ts`; run it after any prompt or model change. Result on 2026-10-06 with `note-v1`: 5/5 on `gemini-3.5-flash-lite`; `gemini-3.8-flash` could not be evaluated (503 on every case).
 
-### Testing
+### API docs and retention
 
-- API tests run the real app on the in-memory repositories in `src/testing`. Nothing automated exercises the Prisma repositories yet: they were checked by hand against Neon, which is how the unescaped LIKE wildcard in title search was found. Step 1.7 should add integration tests for the repositories, including that search.
+- `src/openapi/document.ts` lists every public operation and takes its schemas from `packages/shared`. Add an entry there for each new route; a test calls every documented route to prove it exists.
+- `/docs` loads Swagger UI from jsDelivr at a pinned version with integrity hashes and has its own content security policy. Recompute both hashes when changing the version.
+- `GET /internal/cron/retention` needs `Authorization: Bearer <CRON_SECRET>` and answers 404 without it. It deletes guests older than 24 h, expired refresh tokens and day-old rate-limit counters, and is safe to run twice.
+- On Vercel's Hobby plan a cron runs once a day at some point within its hour, so a guest account can live up to about 48 h before it is deleted, although its session ends at 24 h. Describe it that way in the README.
+
+### Testing and CI
+
+- `pnpm test`: unit and API tests on the in-memory repositories in `src/testing`. `pnpm test:coverage` enforces 80% on `apps/api/src/services`.
+- `pnpm test:integration`: the Prisma repositories and one full API flow against a real PostgreSQL. It needs `TEST_DATABASE_URL`, which is deliberately not `DATABASE_URL`. Tests create and delete their own rows and never truncate.
+- CI (`.github/workflows/ci.yml`) runs format check, lint, typecheck, coverage, integration tests on a `postgres:18` service, and `pnpm audit --prod --audit-level high`. Actions are pinned to commits. The workflows have not run yet: check the first run after pushing.
+- CodeQL and Dependabot are configured in `.github`. Code scanning and Dependabot alerts also have to be switched on in the repository settings on GitHub.
+
+### Deploying the API to Vercel (owner's steps)
+
+- Create a Vercel project with Root Directory `apps/api`. `src/server.ts` is the entry point Vercel detects; the app factory lives in `src/create-app.ts` so that no second candidate exists.
+- Set every variable from `.env.example` in the project settings, with `NODE_ENV=production`, `TRUST_PROXY_HOPS=1`, and `CORS_ALLOWED_ORIGINS` set to the web app's URL.
+- `vercel.json` builds the shared package, generates the Prisma client and runs `prisma migrate deploy` on every build, so `DIRECT_URL` must be set too. Preview builds migrate whichever database their variables point to.
+- `vercel.json` pins the function to `cle1` (Ohio), next to the Neon database in us-east-2. The build command and region are untested until the first deploy.
+- Model calls are bounded to fit the 300 s request limit: 75 s for transcription and 45 s for the note, each with one retry.
 
 ### To carry into later steps
 
-- Step 1.7: give the function a maximum duration that covers the model timeouts with one retry each (transcription 90 s, note 60 s).
-
 - Step 1.8 (threat model): account deletion does not ask for the password again; registration reveals whether an email is taken; rate limits are per address only.
 
-- Step 1.7: set `TRUST_PROXY_HOPS=1` on Vercel, otherwise every visitor shares one rate-limit bucket. Have the retention cron also delete `rate_limit_buckets` rows older than a day and expired `refresh_tokens`.
 - Step 2.1: the web app must call the API through a same-origin proxy that keeps the `/v1/...` paths (a Next.js rewrite). Two `*.vercel.app` hosts are different sites, so SameSite cookies would not be sent between them, and the refresh cookie is scoped to `/v1/auth`.
 - Step 2.1: run one refresh at a time across tabs (for example with the Web Locks API). Two tabs refreshing with the same cookie look like a replay and sign the user out.

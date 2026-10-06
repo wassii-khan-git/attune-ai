@@ -4,5 +4,12 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src", "eval", "vitest.config.ts", "prisma.config.ts"]
+  "include": [
+    "src",
+    "eval",
+    "test",
+    "vitest.config.ts",
+    "vitest.integration.config.ts",
+    "prisma.config.ts"
+  ]
 }

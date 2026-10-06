@@ -1,5 +1,5 @@
 import { createGeminiScribeModel } from './ai/gemini-scribe-model.js';
-import { createApp } from './app.js';
+import { createApp } from './create-app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createLogger } from './lib/logger.js';
 import { createHealthRepository } from './repositories/health.repository.js';
@@ -35,6 +35,7 @@ const app = createApp({
   corsAllowedOrigins: config.CORS_ALLOWED_ORIGINS,
   trustProxyHops: config.TRUST_PROXY_HOPS,
   accessTokenSecret: config.JWT_ACCESS_SECRET,
+  cronSecret: config.CRON_SECRET,
   fieldEncryptionKey: Buffer.from(config.ENCRYPTION_KEY, 'base64'),
   scribeModel: createGeminiScribeModel({
     apiKey: config.GOOGLE_GENERATIVE_AI_API_KEY,

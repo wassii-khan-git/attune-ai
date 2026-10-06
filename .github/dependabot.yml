@@ -1,0 +1,34 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait a week after a release before proposing it, in line with pnpm's own release-age rule.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      # The Prisma CLI, client and driver adapter must always be the same version.
+      prisma:
+        patterns:
+          - prisma
+          - '@prisma/*'
+      # The AI SDK and its provider are released together.
+      ai-sdk:
+        patterns:
+          - ai
+          - '@ai-sdk/*'
+      tooling:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

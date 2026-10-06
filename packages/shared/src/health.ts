@@ -18,3 +18,14 @@ export const readinessResponseSchema = z.object({
   checks: z.record(z.string(), readinessCheckStatusSchema),
 });
 export type ReadinessResponse = z.infer<typeof readinessResponseSchema>;
+
+/** How many rows of each kind one retention run removed. */
+export const retentionReportSchema = z.object({
+  guestAccounts: z.number().int(),
+  refreshTokens: z.number().int(),
+  rateLimitBuckets: z.number().int(),
+});
+export type RetentionReport = z.infer<typeof retentionReportSchema>;
+
+export const retentionResponseSchema = z.object({ purged: retentionReportSchema });
+export type RetentionResponse = z.infer<typeof retentionResponseSchema>;

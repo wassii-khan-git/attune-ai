@@ -74,6 +74,13 @@ export function createInMemoryUserRepository(
       remove(id);
     },
     delete: (id) => Promise.resolve(remove(id)),
+    deleteGuestsCreatedBefore: (cutoff) => {
+      const expired = records
+        .filter((record) => record.isGuest && record.createdAt.getTime() < cutoff.getTime())
+        .map((record) => record.id);
+      expired.forEach(remove);
+      return Promise.resolve(expired);
+    },
     createRegistered: ({ email, passwordHash }) => {
       if (records.some((record) => record.email === email)) {
         return Promise.reject(new EmailTakenError());
@@ -125,18 +132,34 @@ export function createInMemoryRefreshTokenRepository(): InMemoryRefreshTokenRepo
       }
       return Promise.resolve();
     },
+    deleteExpiredBefore: (cutoff) =>
+      Promise.resolve(
+        removeWhere(records, (record) => record.expiresAt.getTime() < cutoff.getTime()),
+      ),
   };
 }
 
-export function createInMemoryRateLimitRepository(): RateLimitRepository {
-  const counts = new Map<string, number>();
+export type InMemoryRateLimitRepository = RateLimitRepository & {
+  /** How many counters are currently stored. */
+  size: () => number;
+};
+
+export function createInMemoryRateLimitRepository(): InMemoryRateLimitRepository {
+  const buckets: { key: string; windowStart: number; count: number }[] = [];
   return {
+    size: () => buckets.length,
     increment: (key, windowStart) => {
-      const bucket = `${key}@${String(windowStart.getTime())}`;
-      const count = (counts.get(bucket) ?? 0) + 1;
-      counts.set(bucket, count);
-      return Promise.resolve(count);
+      const startMs = windowStart.getTime();
+      let bucket = buckets.find((item) => item.key === key && item.windowStart === startMs);
+      if (bucket === undefined) {
+        bucket = { key, windowStart: startMs, count: 0 };
+        buckets.push(bucket);
+      }
+      bucket.count++;
+      return Promise.resolve(bucket.count);
     },
+    deleteWindowsBefore: (cutoff) =>
+      Promise.resolve(removeWhere(buckets, (bucket) => bucket.windowStart < cutoff.getTime())),
   };
 }
 
@@ -290,6 +313,7 @@ export type InMemoryRepositories = Repositories & {
   audit: InMemoryAuditRepository;
   visits: InMemoryVisitRepository;
   usage: InMemoryUsageRepository;
+  rateLimits: InMemoryRateLimitRepository;
 };
 
 export function createInMemoryRepositories(now: () => Date): InMemoryRepositories {

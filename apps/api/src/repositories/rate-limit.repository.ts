@@ -3,6 +3,8 @@ import type { PrismaClient } from './prisma.js';
 export type RateLimitRepository = {
   /** Adds one to the counter for this key and window, and returns the new total. */
   increment: (key: string, windowStart: Date) => Promise<number>;
+  /** Removes counters for windows that started before `cutoff`. Returns how many were removed. */
+  deleteWindowsBefore: (cutoff: Date) => Promise<number>;
 };
 
 export function createRateLimitRepository(prisma: PrismaClient): RateLimitRepository {
@@ -20,6 +22,13 @@ export function createRateLimitRepository(prisma: PrismaClient): RateLimitReposi
       if (count === undefined) {
         throw new Error('Rate limit upsert returned no row');
       }
+      return count;
+    },
+
+    deleteWindowsBefore: async (cutoff) => {
+      const { count } = await prisma.rateLimitBucket.deleteMany({
+        where: { windowStart: { lt: cutoff } },
+      });
       return count;
     },
   };

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm --filter @attune/shared build && pnpm --filter @attune/api generate && pnpm --filter @attune/api db:deploy",
+  "regions": ["cle1"],
+  "crons": [
+    {
+      "path": "/internal/cron/retention",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

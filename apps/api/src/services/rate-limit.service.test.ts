@@ -62,6 +62,7 @@ describe('rate limit service', () => {
           keys.push(key);
           return Promise.resolve(1);
         },
+        deleteWindowsBefore: () => Promise.resolve(0),
       },
       createTestClock().now,
     );
