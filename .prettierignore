@@ -7,7 +7,3 @@ coverage
 .expo
 .vercel
 pnpm-lock.yaml
-
-# Hand-written planning docs keep their author's formatting
-/CLAUDE.md
-/build-plan.md
