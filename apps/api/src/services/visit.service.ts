@@ -10,16 +10,28 @@ import {
 import { AppError } from '../lib/app-error.js';
 import type { FieldCipher } from '../lib/field-cipher.js';
 import { decodePageCursor, encodePageCursor } from '../lib/page-cursor.js';
-import type {
-  VisitRecord,
-  VisitRepository,
-  VisitSummaryRecord,
+import {
+  UnknownOwnerError,
+  type VisitRecord,
+  type VisitRepository,
+  type VisitSummaryRecord,
 } from '../repositories/visit.repository.js';
 import type { AuditService } from './audit.service.js';
 
+/**
+ * Visits one account may hold. Without a ceiling a single session could fill
+ * the database; guests get a small one because their accounts are free to create.
+ */
+export const MAX_VISITS_PER_ACCOUNT = { registered: 200, guest: 20 } as const;
+
+export type VisitOwner = {
+  userId: string;
+  isGuest: boolean;
+};
+
 export type VisitService = {
   create: (
-    userId: string,
+    owner: VisitOwner,
     input: { title: string; consentGiven: boolean },
   ) => Promise<VisitSummary>;
   list: (
@@ -103,9 +115,30 @@ export function createVisitService({
   }
 
   return {
-    create: async (userId, { title, consentGiven }) => {
-      // The server's clock, not the client's, says when consent was given.
-      const record = await visits.create({ userId, title, consentAt: consentGiven ? now() : null });
+    create: async ({ userId, isGuest }, { title, consentGiven }) => {
+      const limit = isGuest ? MAX_VISITS_PER_ACCOUNT.guest : MAX_VISITS_PER_ACCOUNT.registered;
+      if ((await visits.countForUser(userId)) >= limit) {
+        throw new AppError(
+          409,
+          'VISIT_LIMIT_REACHED',
+          `You have reached the limit of ${String(limit)} visits. Delete one to add another.`,
+          { reason: 'visit_limit_reached' },
+        );
+      }
+
+      let record: VisitSummaryRecord;
+      try {
+        // The server's clock, not the client's, says when consent was given.
+        record = await visits.create({ userId, title, consentAt: consentGiven ? now() : null });
+      } catch (error) {
+        if (error instanceof UnknownOwnerError) {
+          // A token that outlived its account: valid signature, nobody behind it.
+          throw new AppError(401, 'UNAUTHENTICATED', 'Your session has ended. Sign in again.', {
+            reason: 'account_gone',
+          });
+        }
+        throw error;
+      }
       await audit.record({
         actorId: userId,
         action: 'VISIT_CREATED',

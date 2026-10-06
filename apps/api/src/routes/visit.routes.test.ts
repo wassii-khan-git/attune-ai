@@ -137,6 +137,69 @@ describe('POST /v1/visits', () => {
   });
 });
 
+describe('limits on creating visits', () => {
+  it('caps the visits a guest may hold, and frees a slot when one is deleted', async () => {
+    const { app } = createTestApp();
+    const session = await request(app).post('/v1/auth/guest').set('X-Token-Transport', 'body');
+    const bearer = `Bearer ${authResponseSchema.parse(session.body).tokens?.accessToken ?? ''}`;
+    const create = () =>
+      request(app).post('/v1/visits').set('Authorization', bearer).send({ title: 'Visit' });
+    const ids: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      ids.push(visitResponseSchema.parse((await create()).body).visit.id);
+    }
+
+    const overLimit = await create();
+    await request(app)
+      .delete(`/v1/visits/${String(ids[0])}`)
+      .set('Authorization', bearer);
+    const afterDelete = await create();
+
+    expect(overLimit.status).toBe(409);
+    expect(errorCode(overLimit)).toBe('VISIT_LIMIT_REACHED');
+    expect(afterDelete.status).toBe(201);
+  });
+
+  it('gives a registered user a higher ceiling', async () => {
+    const { app } = createTestApp();
+    const alice = await signUp(app, 'alice@example.com');
+
+    for (let i = 0; i < 21; i++) {
+      expect((await alice.post('/v1/visits', { title: 'Visit' })).status).toBe(201);
+    }
+  });
+
+  it('throttles a burst of writes from one account', async () => {
+    const { app } = createTestApp();
+    const alice = await signUp(app, 'alice@example.com');
+    const id = await createVisit(alice, 'Cough review');
+
+    // One write was the create above; the note is then saved until the window's budget of 300 is spent.
+    const statuses = new Set<number>();
+    for (let i = 0; i < 299; i++) {
+      statuses.add((await alice.put(`/v1/visits/${id}/note`, { note })).status);
+    }
+    const throttled = await alice.put(`/v1/visits/${id}/note`, { note });
+
+    expect([...statuses]).toEqual([200]);
+    expect(throttled.status).toBe(429);
+    expect(errorCode(throttled)).toBe('RATE_LIMITED');
+    expect((await alice.get(`/v1/visits/${id}`)).status).toBe(200);
+  });
+
+  it('turns away a token whose account no longer exists, instead of failing', async () => {
+    const { app, repositories } = createTestApp();
+    const alice = await signUp(app, 'alice@example.com');
+    repositories.users.remove(alice.userId);
+
+    const response = await alice.post('/v1/visits', { title: 'Cough review' });
+
+    expect(response.status).toBe(401);
+    expect(errorCode(response)).toBe('UNAUTHENTICATED');
+    expect(repositories.visits.records).toHaveLength(0);
+  });
+});
+
 describe('GET /v1/visits', () => {
   it("returns only the caller's visits, newest first, without clinical content", async () => {
     const { app, clock } = createTestApp();
@@ -307,6 +370,25 @@ describe('GET /v1/visits/:id', () => {
 
     expect(response.status).toBe(400);
     expect(errorCode(response)).toBe('VALIDATION_ERROR');
+  });
+
+  it("reports stored content of the wrong shape as a server fault, not as the caller's mistake", async () => {
+    const { app, repositories, logs } = createTestApp();
+    const alice = await signUp(app, 'alice@example.com');
+    const id = await createVisit(alice, 'Cough review');
+    repositories.visits.patch(id, {
+      noteEnc: createFieldCipher(TEST_FIELD_ENCRYPTION_KEY).encrypt(
+        JSON.stringify({ subjective: 'Synthetic-stored-text', objective: 42 }),
+        `visit:${id}:note`,
+      ),
+    });
+
+    const response = await alice.get(`/v1/visits/${id}`);
+
+    expect(response.status).toBe(500);
+    expect(errorCode(response)).toBe('INTERNAL_ERROR');
+    expect(response.text).not.toContain('Synthetic-stored-text');
+    expect(logs.raw()).not.toContain('Synthetic-stored-text');
   });
 
   it('fails closed when a stored note has been moved from another visit', async () => {

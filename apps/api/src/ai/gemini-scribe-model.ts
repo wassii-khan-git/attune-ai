@@ -22,7 +22,12 @@ function toScribeModelError(error: unknown): ScribeModelError {
     return error;
   }
   if (APICallError.isInstance(error)) {
-    return new ScribeModelError('The model request failed', error.isRetryable, { cause: error });
+    // The status code is recorded because the provider's own explanation will not be logged.
+    return new ScribeModelError(
+      `The model request failed (HTTP ${String(error.statusCode ?? 'no status')})`,
+      error.isRetryable,
+      { cause: error },
+    );
   }
   if (error instanceof Error && ABORT_ERROR_NAMES.has(error.name)) {
     return new ScribeModelError('The model request timed out', true, { cause: error });

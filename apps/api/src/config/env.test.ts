@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, envSchema, loadConfig } from './env.js';
 
 const validEnv = {
+  NODE_ENV: 'test',
   DATABASE_URL: 'postgresql://user:password@localhost:5432/attune',
   GOOGLE_GENERATIVE_AI_API_KEY: 'test-api-key',
   GEMINI_MODEL: 'test-model',
@@ -31,9 +32,11 @@ describe('loadConfig', () => {
     const config = loadConfig(validEnv);
 
     expect(config).toMatchObject({
-      NODE_ENV: 'development',
+      NODE_ENV: 'test',
       PORT: 4000,
       LOG_LEVEL: 'info',
+      TRUST_PROXY_HOPS: 0,
+      DAILY_GENERATION_BUDGET: 100,
       GEMINI_MODEL: 'test-model',
       CORS_ALLOWED_ORIGINS: ['http://localhost:3000'],
     });
@@ -89,6 +92,41 @@ describe('loadConfig', () => {
 
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatch(/^CORS_ALLOWED_ORIGINS\.1:/);
+  });
+
+  it('refuses to guess the environment', () => {
+    const { NODE_ENV: _omitted, ...withoutNodeEnv } = validEnv;
+
+    expect(problemsFor(withoutNodeEnv)).toEqual(['NODE_ENV: Required']);
+  });
+
+  describe('in production', () => {
+    const production = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      CORS_ALLOWED_ORIGINS: 'https://app.example.com',
+      TRUST_PROXY_HOPS: '1',
+    };
+
+    it('accepts https origins behind a declared proxy', () => {
+      expect(loadConfig(production)).toMatchObject({ NODE_ENV: 'production', TRUST_PROXY_HOPS: 1 });
+    });
+
+    it('rejects a plain http origin', () => {
+      const problems = problemsFor({
+        ...production,
+        CORS_ALLOWED_ORIGINS: 'https://app.example.com,http://localhost:3000',
+      });
+
+      expect(problems).toEqual(['CORS_ALLOWED_ORIGINS.1: Must be an https origin in production']);
+    });
+
+    it('rejects a missing proxy setting, which would merge every client into one rate-limit bucket', () => {
+      const { TRUST_PROXY_HOPS: _omitted, ...withoutProxy } = production;
+
+      expect(problemsFor(withoutProxy)).toHaveLength(1);
+      expect(problemsFor(withoutProxy)[0]).toMatch(/^TRUST_PROXY_HOPS:/);
+    });
   });
 
   it('never echoes a rejected value, so secrets cannot reach boot logs', () => {

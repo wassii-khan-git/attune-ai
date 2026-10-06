@@ -32,6 +32,8 @@ jobs:
       - run: pnpm typecheck
       # Fails if coverage of apps/api/src/services drops below 80%.
       - run: pnpm test:coverage
+      # The production build uses its own tsconfig, so it is checked separately from typecheck.
+      - run: pnpm build
 
   integration:
     name: Integration tests (PostgreSQL)

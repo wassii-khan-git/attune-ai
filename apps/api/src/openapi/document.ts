@@ -55,7 +55,7 @@ const ERROR_DESCRIPTIONS: Record<number, string> = {
   401: 'No valid session.',
   403: 'The request is not allowed.',
   404: 'The resource does not exist, or belongs to someone else.',
-  409: 'The resource is in a state that does not allow this.',
+  409: 'The resource is in a state that does not allow this, or a limit has been reached.',
   413: 'The body is too large.',
   415: 'The upload is not a supported audio recording.',
   429: 'Too many requests, or the daily quota is used up.',
@@ -178,9 +178,10 @@ export const OPERATIONS: Operation[] = [
     tag: 'Visits',
     summary: 'Create a visit',
     auth: true,
+    description: 'An account holds a limited number of visits; at the limit this answers 409.',
     body: createVisitRequestSchema,
     responses: { 201: { description: 'Visit created.', schema: visitResponseSchema } },
-    errors: [400],
+    errors: [400, 409, 429],
   },
   {
     method: 'get',
@@ -214,7 +215,7 @@ export const OPERATIONS: Operation[] = [
     params: visitIdParamsSchema,
     body: updateNoteRequestSchema,
     responses: { 200: { description: 'Note saved.', schema: visitResponseSchema } },
-    errors: [400, 404, 409],
+    errors: [400, 404, 409, 429],
   },
   {
     method: 'delete',
@@ -224,7 +225,7 @@ export const OPERATIONS: Operation[] = [
     auth: true,
     params: visitIdParamsSchema,
     responses: { 204: { description: 'Deleted. Also returned when it was already gone.' } },
-    errors: [400],
+    errors: [400, 429],
   },
   {
     method: 'post',
@@ -232,14 +233,16 @@ export const OPERATIONS: Operation[] = [
     tag: 'Visits',
     summary: 'Upload a recording and stream the transcript and note',
     description: [
-      `Takes one audio file of at most ${String(MAX_AUDIO_BYTES / 1024 / 1024)} MB and ${String(MAX_RECORDING_SEC / 60)} minutes. The recording is held in memory for this request and never stored.`,
+      `Takes one audio file of at most ${String(MAX_AUDIO_BYTES / 1024 / 1024)} MB. The recording is held in memory for this request and never stored.`,
+      `Recordings are meant to be at most ${String(MAX_RECORDING_SEC / 60)} minutes. The length is reported by the client in \`durationSec\`; the limit the server enforces itself is the file size.`,
+      'If the visit already has a note, the request is refused with `NOTE_EXISTS` unless `replaceExisting` is `true`, so an edited note is never overwritten by accident.',
       'The response is newline-delimited JSON: one event per line, ending with exactly one `done` or `error` event. Once the stream has started the status stays 200, so read the last event to know the outcome.',
     ].join('\n\n'),
     auth: true,
     params: visitIdParamsSchema,
     multipartBody: {
       type: 'object',
-      required: [AUDIO_FIELD_NAME],
+      required: [AUDIO_FIELD_NAME, 'durationSec'],
       properties: {
         [AUDIO_FIELD_NAME]: { type: 'string', format: 'binary', description: 'The recording.' },
         durationSec: {
@@ -247,6 +250,11 @@ export const OPERATIONS: Operation[] = [
           minimum: 1,
           maximum: MAX_RECORDING_SEC,
           description: 'Length of the recording as measured by the client.',
+        },
+        replaceExisting: {
+          type: 'boolean',
+          default: false,
+          description: 'Confirms that an existing note may be replaced.',
         },
       },
     },

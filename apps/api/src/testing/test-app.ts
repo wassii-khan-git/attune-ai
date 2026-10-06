@@ -51,6 +51,7 @@ export function createTestApp(overrides: Partial<AppDependencies> = {}): TestApp
     scribeModel: createFakeScribeModel(),
     sleep: () => Promise.resolve(),
     secureCookies: false,
+    dailyGenerationBudget: 1_000,
     // The lowest cost bcrypt allows keeps the suite fast.
     passwordHashCost: 4,
     now: clock.now,

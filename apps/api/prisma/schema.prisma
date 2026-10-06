@@ -33,7 +33,11 @@ enum AuditAction {
   USER_REGISTERED
   GUEST_CREATED
   USER_LOGGED_IN
+  /// A wrong password for an existing account. There is no acting user: nobody was signed in.
+  LOGIN_FAILED
   USER_LOGGED_OUT
+  /// Every session of the account was ended because a retired refresh token was presented again.
+  SESSIONS_REVOKED
   ACCOUNT_DELETED
   VISIT_CREATED
   VISIT_VIEWED

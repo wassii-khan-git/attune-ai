@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @attune/shared build && pnpm --filter @attune/api generate && pnpm --filter @attune/api db:deploy",
+  "buildCommand": "pnpm --filter @attune/shared build && pnpm --filter @attune/api generate && pnpm --filter @attune/api run migrate:production",
   "regions": ["cle1"],
   "crons": [
     {

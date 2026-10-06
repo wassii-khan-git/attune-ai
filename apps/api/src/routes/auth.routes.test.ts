@@ -167,6 +167,82 @@ describe('POST /v1/auth/login', () => {
   });
 });
 
+describe('traces left by refused sign-ins', () => {
+  it('audits a wrong password against the account and logs why, without the email', async () => {
+    const { app, repositories, logs } = createTestApp();
+    const { user } = await registerNative(app);
+
+    await request(app)
+      .post('/v1/auth/login')
+      .send({ ...credentials, password: 'not-the-passphrase' });
+
+    expect(repositories.audit.events.at(-1)).toEqual({
+      actorId: null,
+      action: 'LOGIN_FAILED',
+      resourceType: 'USER',
+      resourceId: user.id,
+    });
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        msg: 'request refused',
+        reason: 'invalid_credentials',
+        userId: user.id,
+      }),
+    );
+    expect(logs.raw()).not.toContain(credentials.email);
+    expect(logs.raw()).not.toContain('not-the-passphrase');
+  });
+
+  it('logs an attempt on an unknown email without creating an audit row', async () => {
+    const { app, repositories, logs } = createTestApp();
+
+    await request(app).post('/v1/auth/login').send(credentials);
+
+    expect(repositories.audit.events).toEqual([]);
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({ msg: 'request refused', reason: 'invalid_credentials' }),
+    );
+    expect(logs.raw()).not.toContain(credentials.email);
+  });
+
+  it('audits and logs a replayed refresh token as a forced sign-out', async () => {
+    const { app, repositories, logs } = createTestApp();
+    const { user, tokens } = await registerNative(app);
+    const refresh = (refreshToken: string) =>
+      request(app).post('/v1/auth/refresh').send({ refreshToken });
+    await refresh(tokens.refreshToken);
+
+    await refresh(tokens.refreshToken);
+
+    expect(repositories.audit.events.at(-1)).toEqual({
+      actorId: null,
+      action: 'SESSIONS_REVOKED',
+      resourceType: 'USER',
+      resourceId: user.id,
+    });
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        reason: 'refresh_token_replayed',
+        userId: user.id,
+      }),
+    );
+    expect(logs.raw()).not.toContain(tokens.refreshToken);
+  });
+
+  it('logs which limit a throttled caller hit', async () => {
+    const { app, logs } = createTestApp();
+    for (let i = 0; i < 6; i++) {
+      await request(app).post('/v1/auth/guest');
+    }
+
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({ msg: 'request refused', reason: 'rate_limited:auth-guest' }),
+    );
+  });
+});
+
 describe('POST /v1/auth/guest', () => {
   it('creates a temporary account without credentials', async () => {
     const { app, repositories } = createTestApp();

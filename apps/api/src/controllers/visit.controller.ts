@@ -9,6 +9,8 @@ import {
 } from '@attune/shared';
 import type { Request, Response } from 'express';
 
+import { parseRequest } from '../lib/validation.js';
+
 import { requireAuth } from '../middleware/authenticate.js';
 import type { VisitService } from '../services/visit.service.js';
 
@@ -30,37 +32,37 @@ function noStore(res: Response): Response {
 export function createVisitController(service: VisitService): VisitController {
   return {
     create: async (req, res) => {
-      const { userId } = requireAuth(req);
-      const input = createVisitRequestSchema.parse(req.body);
-      const body: VisitResponse = { visit: await service.create(userId, input) };
+      const owner = requireAuth(req);
+      const input = parseRequest(createVisitRequestSchema, req.body);
+      const body: VisitResponse = { visit: await service.create(owner, input) };
       noStore(res).status(201).json(body);
     },
 
     list: async (req, res) => {
       const { userId } = requireAuth(req);
-      const query = listVisitsQuerySchema.parse(req.query);
+      const query = parseRequest(listVisitsQuerySchema, req.query);
       const body: ListVisitsResponse = await service.list(userId, query);
       noStore(res).json(body);
     },
 
     get: async (req, res) => {
       const { userId } = requireAuth(req);
-      const { id } = visitIdParamsSchema.parse(req.params);
+      const { id } = parseRequest(visitIdParamsSchema, req.params);
       const body: VisitDetailResponse = { visit: await service.get(userId, id) };
       noStore(res).json(body);
     },
 
     updateNote: async (req, res) => {
       const { userId } = requireAuth(req);
-      const { id } = visitIdParamsSchema.parse(req.params);
-      const { note } = updateNoteRequestSchema.parse(req.body);
+      const { id } = parseRequest(visitIdParamsSchema, req.params);
+      const { note } = parseRequest(updateNoteRequestSchema, req.body);
       const body: VisitResponse = { visit: await service.updateNote(userId, id, note) };
       noStore(res).json(body);
     },
 
     delete: async (req, res) => {
       const { userId } = requireAuth(req);
-      const { id } = visitIdParamsSchema.parse(req.params);
+      const { id } = parseRequest(visitIdParamsSchema, req.params);
       await service.delete(userId, id);
       res.status(204).end();
     },

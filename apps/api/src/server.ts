@@ -1,6 +1,7 @@
 import { createGeminiScribeModel } from './ai/gemini-scribe-model.js';
 import { createApp } from './create-app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
+import { installCrashHandlers } from './lib/crash-handlers.js';
 import { createLogger } from './lib/logger.js';
 import { createHealthRepository } from './repositories/health.repository.js';
 import { createRepositories } from './repositories/index.js';
@@ -24,6 +25,7 @@ function loadConfigOrExit(): Config {
 
 const config = loadConfigOrExit();
 const logger = createLogger({ level: config.LOG_LEVEL });
+installCrashHandlers(logger);
 
 const prisma = createPrismaClient(config.DATABASE_URL);
 const healthRepository = createHealthRepository(prisma);
@@ -42,6 +44,7 @@ const app = createApp({
     modelId: config.GEMINI_MODEL,
   }),
   secureCookies: config.NODE_ENV !== 'development',
+  dailyGenerationBudget: config.DAILY_GENERATION_BUDGET,
 });
 
 app.listen(config.PORT, (error) => {

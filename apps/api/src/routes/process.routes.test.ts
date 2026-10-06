@@ -76,7 +76,10 @@ async function createVisit(app: TestApp['app'], client: Client, consentGiven = t
 type UploadOptions = {
   file?: Buffer | null;
   contentType?: string;
-  durationSec?: string;
+  /** Null leaves the field out. */
+  durationSec?: string | null;
+  /** Sends `replaceExisting=true`, which a visit that already has a note requires. */
+  replace?: boolean;
 };
 
 /** Uploads a recording and returns the raw response; the body is kept as text for NDJSON parsing. */
@@ -84,7 +87,12 @@ function upload(
   app: TestApp['app'],
   client: Client | null,
   visitId: string,
-  { file = WAV, contentType = 'audio/wav', durationSec }: UploadOptions = {},
+  {
+    file = WAV,
+    contentType = 'audio/wav',
+    durationSec = '30',
+    replace = false,
+  }: UploadOptions = {},
 ) {
   let call = request(app)
     .post(`/v1/visits/${visitId}/process`)
@@ -100,8 +108,11 @@ function upload(
   if (client !== null) {
     call = call.set('Authorization', client.bearer);
   }
-  if (durationSec !== undefined) {
+  if (durationSec !== null) {
     call = call.field('durationSec', durationSec);
+  }
+  if (replace) {
+    call = call.field('replaceExisting', 'true');
   }
   if (file !== null) {
     call = call.attach('audio', file, { filename: 'visit.wav', contentType });
@@ -266,7 +277,7 @@ describe('refusals before anything is streamed', () => {
     const alice = await signUp(app);
     const id = await createVisit(app, alice);
 
-    const response = await upload(app, alice, id, { file: null, durationSec: '10' });
+    const response = await upload(app, alice, id, { file: null });
 
     expect(response.status).toBe(400);
     expect(errorCode(response)).toBe('VALIDATION_ERROR');
@@ -308,6 +319,36 @@ describe('refusals before anything is streamed', () => {
     expect(model.transcribeCalls).toHaveLength(0);
   });
 
+  it('requires the length of the recording', async () => {
+    const { app, model } = setup();
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id, { durationSec: null });
+
+    expect(response.status).toBe(400);
+    expect(errorCode(response)).toBe('VALIDATION_ERROR');
+    expect(model.transcribeCalls).toHaveLength(0);
+  });
+
+  it('answers a body that is cut short with a 400, not a server error', async () => {
+    const { app, logs } = setup();
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await request(app)
+      .post(`/v1/visits/${id}/process`)
+      .set('Authorization', alice.bearer)
+      .set('Content-Type', 'multipart/form-data; boundary=x')
+      .send(
+        '--x\r\nContent-Disposition: form-data; name="audio"; filename="a.wav"\r\nContent-Type: audio/wav\r\n\r\nRIFF',
+      );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ error: { code: 'BAD_REQUEST' } });
+    expect(logs.raw()).not.toContain('unhandled error');
+  });
+
   it.each([['0'], ['301'], ['abc']])('rejects a duration of %s seconds', async (durationSec) => {
     const { app } = setup();
     const alice = await signUp(app);
@@ -330,7 +371,7 @@ describe('refusals before anything is streamed', () => {
     const id = await createVisit(context.app, alice);
 
     const first = await upload(context.app, alice, id);
-    const afterwards = await upload(context.app, alice, id);
+    const afterwards = await upload(context.app, alice, id, { replace: true });
 
     expect(overlapping?.status).toBe(409);
     expect(lastEvent(first)?.type).toBe('done');
@@ -353,6 +394,55 @@ describe('refusals before anything is streamed', () => {
   });
 });
 
+describe('a visit that already has a note', () => {
+  it('refuses a second recording unless replacing is confirmed, and keeps the edited note', async () => {
+    const { app, model } = setup();
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+    await upload(app, alice, id);
+    const edited = { ...FAKE_NOTE, plan: 'Edited by the clinician.' };
+    await request(app)
+      .put(`/v1/visits/${id}/note`)
+      .set('Authorization', alice.bearer)
+      .send({ note: edited });
+
+    const response = await upload(app, alice, id);
+
+    expect(response.status).toBe(409);
+    expect(errorCode(response)).toBe('NOTE_EXISTS');
+    expect(model.transcribeCalls).toHaveLength(1);
+    expect(await getVisit(app, alice, id)).toMatchObject({ status: 'READY', note: edited });
+  });
+
+  it('replaces the note when the request says so', async () => {
+    const { app } = setup();
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+    await upload(app, alice, id);
+    await request(app)
+      .put(`/v1/visits/${id}/note`)
+      .set('Authorization', alice.bearer)
+      .send({ note: { ...FAKE_NOTE, plan: 'Edited by the clinician.' } });
+
+    const response = await upload(app, alice, id, { replace: true });
+
+    expect(lastEvent(response)?.type).toBe('done');
+    expect((await getVisit(app, alice, id)).note).toEqual(FAKE_NOTE);
+  });
+
+  it('protects a note written by hand on a visit that was never processed', async () => {
+    const { app } = setup();
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+    await request(app)
+      .put(`/v1/visits/${id}/note`)
+      .set('Authorization', alice.bearer)
+      .send({ note: FAKE_NOTE });
+
+    expect((await upload(app, alice, id)).status).toBe(409);
+  });
+});
+
 describe('daily quota', () => {
   it('allows ten generations a day for a registered user, then refuses without locking the visit', async () => {
     const { app, model, clock } = setup();
@@ -360,9 +450,9 @@ describe('daily quota', () => {
     const id = await createVisit(app, alice);
 
     for (let i = 0; i < 10; i++) {
-      expect(lastEvent(await upload(app, alice, id))?.type).toBe('done');
+      expect(lastEvent(await upload(app, alice, id, { replace: true }))?.type).toBe('done');
     }
-    const refused = await upload(app, alice, id);
+    const refused = await upload(app, alice, id, { replace: true });
 
     expect(refused.status).toBe(429);
     expect(errorCode(refused)).toBe('QUOTA_EXCEEDED');
@@ -370,7 +460,9 @@ describe('daily quota', () => {
     expect((await getVisit(app, alice, id)).status).toBe('READY');
 
     clock.advance(24 * 60 * MINUTE);
-    expect(lastEvent(await upload(app, await signIn(app), id))?.type).toBe('done');
+    expect(lastEvent(await upload(app, await signIn(app), id, { replace: true }))?.type).toBe(
+      'done',
+    );
   });
 
   it('allows a guest three', async () => {
@@ -379,10 +471,58 @@ describe('daily quota', () => {
     const id = await createVisit(app, guest);
 
     for (let i = 0; i < 3; i++) {
-      expect(lastEvent(await upload(app, guest, id))?.type).toBe('done');
+      expect(lastEvent(await upload(app, guest, id, { replace: true }))?.type).toBe('done');
     }
 
-    expect((await upload(app, guest, id)).status).toBe(429);
+    expect((await upload(app, guest, id, { replace: true })).status).toBe(429);
+  });
+
+  it('stops everyone once the shared daily budget is spent, without locking the visit', async () => {
+    const model = createFakeScribeModel();
+    const { app, logs } = createTestApp({ scribeModel: model, dailyGenerationBudget: 2 });
+    const alice = await signUp(app);
+    const bob = await signUp(app, 'bob@example.com');
+    await upload(app, alice, await createVisit(app, alice));
+    await upload(app, bob, await createVisit(app, bob));
+    const third = await createVisit(app, alice);
+
+    const response = await upload(app, alice, third);
+
+    expect(response.status).toBe(429);
+    expect(errorCode(response)).toBe('QUOTA_EXCEEDED');
+    expect(model.transcribeCalls).toHaveLength(2);
+    expect((await getVisit(app, alice, third)).status).toBe('DRAFT');
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({ msg: 'request refused', reason: 'daily_budget_reached' }),
+    );
+  });
+
+  it('keeps the shared budget when accounts are deleted', async () => {
+    const { app } = createTestApp({ dailyGenerationBudget: 1 });
+    const alice = await signUp(app);
+    await upload(app, alice, await createVisit(app, alice));
+    await request(app).delete('/v1/account').set('Authorization', alice.bearer);
+    const bob = await signUp(app, 'bob@example.com');
+
+    const response = await upload(app, bob, await createVisit(app, bob));
+
+    expect(response.status).toBe(429);
+  });
+
+  it('throttles uploads per user before reading the body', async () => {
+    const { app, model } = setup();
+    const alice = await signUp(app);
+    // No consent, so each attempt is refused cheaply and none reaches the model.
+    const id = await createVisit(app, alice, false);
+
+    for (let i = 0; i < 20; i++) {
+      expect((await upload(app, alice, id)).status).toBe(403);
+    }
+    const throttled = await upload(app, alice, id);
+
+    expect(throttled.status).toBe(429);
+    expect(errorCode(throttled)).toBe('RATE_LIMITED');
+    expect(model.transcribeCalls).toHaveLength(0);
   });
 
   it('counts each user separately', async () => {
@@ -391,7 +531,7 @@ describe('daily quota', () => {
     const alice = await signUp(app);
     const guestVisit = await createVisit(app, guest);
     for (let i = 0; i < 4; i++) {
-      await upload(app, guest, guestVisit);
+      await upload(app, guest, guestVisit, { replace: true });
     }
 
     const response = await upload(app, alice, await createVisit(app, alice));
@@ -492,6 +632,33 @@ describe('model failures', () => {
     });
     expect(model.draftCalls).toHaveLength(0);
     expect((await getVisit(app, alice, id)).status).toBe('FAILED');
+  });
+
+  it('keeps model output out of the logs when it fails validation', async () => {
+    // The AI SDK quotes the rejected output in its error message. That message must not be logged.
+    const quoted = Object.assign(
+      new Error(
+        'Type validation failed: Value: {"turns":[{"speaker":"Nurse","text":"SYNTHETIC-TRANSCRIPT"}]}',
+      ),
+      { name: 'AI_TypeValidationError', value: { text: 'SYNTHETIC-TRANSCRIPT' } },
+    );
+    const { app, logs } = setup({
+      transcribeFailures: [
+        new ScribeModelError('The model returned an unusable response', false, { cause: quoted }),
+      ],
+    });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)).toMatchObject({ type: 'error', error: { code: 'AI_UNAVAILABLE' } });
+    expect(logs.raw()).not.toContain('SYNTHETIC-TRANSCRIPT');
+    const failure = logs.entries().find((entry) => entry.msg === 'visit processing failed');
+    expect(failure?.err).toMatchObject({
+      message: 'The model returned an unusable response',
+      cause: { type: 'AI_TypeValidationError', message: '[withheld]' },
+    });
   });
 
   it('hides an unexpected error from the client', async () => {

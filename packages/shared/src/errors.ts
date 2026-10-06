@@ -10,6 +10,8 @@ export const errorCodeSchema = z.enum([
   'NOT_FOUND',
   'EMAIL_TAKEN',
   'CONFLICT',
+  'NOTE_EXISTS',
+  'VISIT_LIMIT_REACHED',
   'CONSENT_REQUIRED',
   'PAYLOAD_TOO_LARGE',
   'UNSUPPORTED_MEDIA_TYPE',

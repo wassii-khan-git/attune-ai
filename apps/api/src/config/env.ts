@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SafeError } from '../lib/safe-error.js';
+
 const ENCRYPTION_KEY_BYTES = 32;
 const MIN_SECRET_LENGTH = 32;
 
@@ -27,39 +29,74 @@ const corsOrigins = z
  * The full environment contract of the API. `.env.example` mirrors this schema
  * and a test fails if the two drift apart.
  */
-export const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+export const envSchema = z
+  .object({
+    /**
+     * Required, with no default. A deployment that forgot to say it is production
+     * must not quietly run with development settings, such as cookies without `Secure`.
+     */
+    NODE_ENV: z.enum(['development', 'test', 'production']),
+    PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      .default('info'),
 
-  DATABASE_URL: postgresUrl,
+    DATABASE_URL: postgresUrl,
 
-  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1),
-  GEMINI_MODEL: z.string().min(1),
+    GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1),
+    GEMINI_MODEL: z.string().min(1),
 
-  ENCRYPTION_KEY: z
-    .base64()
-    .refine((value) => Buffer.from(value, 'base64').length === ENCRYPTION_KEY_BYTES, {
-      error: `Must decode to exactly ${String(ENCRYPTION_KEY_BYTES)} bytes`,
-    }),
+    ENCRYPTION_KEY: z
+      .base64()
+      .refine((value) => Buffer.from(value, 'base64').length === ENCRYPTION_KEY_BYTES, {
+        error: `Must decode to exactly ${String(ENCRYPTION_KEY_BYTES)} bytes`,
+      }),
 
-  JWT_ACCESS_SECRET: secret,
+    JWT_ACCESS_SECRET: secret,
 
-  CORS_ALLOWED_ORIGINS: corsOrigins,
+    CORS_ALLOWED_ORIGINS: corsOrigins,
 
-  /**
-   * How many reverse proxies sit in front of the API. Rate limiting keys on the
-   * client address, which is only correct when this matches the deployment:
-   * 0 for a direct connection, 1 behind a platform proxy such as Vercel's.
-   */
-  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+    /**
+     * How many reverse proxies sit in front of the API. Rate limiting keys on the
+     * client address, which is only correct when this matches the deployment:
+     * 0 for a direct connection, 1 behind a platform proxy such as Vercel's.
+     */
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
 
-  CRON_SECRET: secret,
-});
+    CRON_SECRET: secret,
+
+    /**
+     * Generations allowed per UTC day across all users. The model runs on one
+     * shared free-tier key, so this is what stops a single abuser from using it up.
+     */
+    DAILY_GENERATION_BUDGET: z.coerce.number().int().min(1).max(100_000).default(100),
+  })
+  // Settings that are fine on a laptop and dangerous on the internet are refused in production.
+  .superRefine((env, context) => {
+    if (env.NODE_ENV !== 'production') {
+      return;
+    }
+    env.CORS_ALLOWED_ORIGINS.forEach((origin, index) => {
+      if (!origin.startsWith('https://')) {
+        context.addIssue({
+          code: 'custom',
+          path: ['CORS_ALLOWED_ORIGINS', index],
+          message: 'Must be an https origin in production',
+        });
+      }
+    });
+    if (env.TRUST_PROXY_HOPS < 1) {
+      context.addIssue({
+        code: 'custom',
+        path: ['TRUST_PROXY_HOPS'],
+        message: 'Must be at least 1 in production, or every client shares one rate-limit bucket',
+      });
+    }
+  });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;
 
-export class ConfigError extends Error {
+export class ConfigError extends SafeError {
   constructor(readonly problems: readonly string[]) {
     super(
       ['Invalid environment configuration:', ...problems.map((problem) => `  - ${problem}`)].join(

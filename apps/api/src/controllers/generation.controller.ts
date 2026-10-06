@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 
 import { AppError } from '../lib/app-error.js';
 import { detectAudioMediaType } from '../lib/audio-format.js';
+import { parseRequest } from '../lib/validation.js';
 import { requireAuth } from '../middleware/authenticate.js';
 import type { GenerationService } from '../services/generation.service.js';
 
@@ -14,13 +15,16 @@ export function createGenerationController(service: GenerationService): Generati
   return {
     process: async (req, res) => {
       const caller = requireAuth(req);
-      const { id } = visitIdParamsSchema.parse(req.params);
-      const { durationSec } = processVisitFieldsSchema.parse(req.body ?? {});
+      const { id } = parseRequest(visitIdParamsSchema, req.params);
+      const { durationSec, replaceExisting } = parseRequest(
+        processVisitFieldsSchema,
+        req.body ?? {},
+      );
 
       if (req.file === undefined) {
-        throw new AppError(400, 'VALIDATION_ERROR', 'The request is not valid.', [
-          { path: AUDIO_FIELD_NAME, message: 'An audio file is required' },
-        ]);
+        throw new AppError(400, 'VALIDATION_ERROR', 'The request is not valid.', {
+          details: [{ path: AUDIO_FIELD_NAME, message: 'An audio file is required' }],
+        });
       }
       const mediaType = detectAudioMediaType(req.file.buffer);
       if (mediaType === null) {
@@ -28,6 +32,7 @@ export function createGenerationController(service: GenerationService): Generati
           415,
           'UNSUPPORTED_MEDIA_TYPE',
           'This file is not a supported audio recording.',
+          { reason: 'upload_not_audio' },
         );
       }
 
@@ -35,7 +40,7 @@ export function createGenerationController(service: GenerationService): Generati
       const events = await service.begin(
         caller,
         id,
-        { audio: { data: req.file.buffer, mediaType }, durationSec },
+        { audio: { data: req.file.buffer, mediaType }, durationSec, replaceExisting },
         req.log,
       );
 

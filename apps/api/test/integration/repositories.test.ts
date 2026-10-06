@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { EmailTakenError } from '../../src/repositories/user.repository.js';
+import { UnknownOwnerError } from '../../src/repositories/visit.repository.js';
 import { connectTestDatabase, uniqueEmail } from './database.js';
 
 const db = connectTestDatabase();
@@ -70,7 +71,7 @@ describe('users', () => {
     expect(guest).toMatchObject({ isGuest: true, email: null, passwordHash: null });
   });
 
-  it('deletes only guests older than the cutoff, and returns their ids', async () => {
+  it('purges only guests older than the cutoff and audits each one in the same statement', async () => {
     const oldGuest = db.track((await repositories.users.createGuest()).id);
     const newGuest = db.track((await repositories.users.createGuest()).id);
     const oldMember = await newUser();
@@ -78,14 +79,19 @@ describe('users', () => {
       where: { id: { in: [oldGuest, oldMember.id] } },
       data: { createdAt: LONG_AGO },
     });
+    const cutoff = new Date(LONG_AGO.getTime() + 1000);
 
-    const deleted = await repositories.users.deleteGuestsCreatedBefore(
-      new Date(LONG_AGO.getTime() + 1000),
-    );
+    const purged = await repositories.retention.purgeGuestsCreatedBefore(cutoff);
+    const again = await repositories.retention.purgeGuestsCreatedBefore(cutoff);
 
-    expect(deleted).toEqual([oldGuest]);
+    expect(purged).toBe(1);
+    expect(again).toBe(0);
+    expect(await repositories.users.findById(oldGuest)).toBeNull();
     expect(await repositories.users.findById(newGuest)).not.toBeNull();
     expect(await repositories.users.findById(oldMember.id)).not.toBeNull();
+    expect(await prisma.auditEvent.findMany({ where: { resourceId: oldGuest } })).toEqual([
+      expect.objectContaining({ userId: null, action: 'ACCOUNT_DELETED', resourceType: 'USER' }),
+    ]);
   });
 });
 
@@ -185,6 +191,17 @@ describe('visits', () => {
       false,
     );
     expect((await repositories.visits.findOwned(visit.id, owner.id))?.status).toBe('DRAFT');
+  });
+
+  it('refuses a visit for a user that does not exist, and counts visits per user', async () => {
+    const owner = await newUser();
+    await newVisit(owner.id);
+    await newVisit(owner.id);
+
+    await expect(
+      repositories.visits.create({ userId: randomUUID(), title: 'Orphan', consentAt: null }),
+    ).rejects.toBeInstanceOf(UnknownOwnerError);
+    expect(await repositories.visits.countForUser(owner.id)).toBe(2);
   });
 
   it('pages newest first without gaps or repeats, including rows with equal timestamps', async () => {
@@ -297,6 +314,21 @@ describe('visits', () => {
 });
 
 describe('audit events', () => {
+  it('accepts the actions added for refused sign-ins', async () => {
+    const subject = await newUser();
+
+    for (const action of ['LOGIN_FAILED', 'SESSIONS_REVOKED'] as const) {
+      await repositories.audit.insert({
+        actorId: null,
+        action,
+        resourceType: 'USER',
+        resourceId: subject.id,
+      });
+    }
+
+    expect(await prisma.auditEvent.count({ where: { resourceId: subject.id } })).toBe(2);
+  });
+
   it('stores an event with no acting user', async () => {
     const subject = await newUser();
 

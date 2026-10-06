@@ -12,8 +12,19 @@ export const AUDIO_FIELD_NAME = 'audio';
 
 /** The text fields that may accompany the audio file. */
 export const processVisitFieldsSchema = z.object({
-  /** Length of the recording as measured by the client. Shown in the UI; not trusted for limits. */
-  durationSec: z.coerce.number().int().min(1).max(MAX_RECORDING_SEC).optional(),
+  /**
+   * Length of the recording as measured by the client. The server cannot check
+   * it without decoding the audio, so the limit it enforces itself is the file size.
+   */
+  durationSec: z.coerce.number().int().min(1).max(MAX_RECORDING_SEC),
+  /**
+   * Must be `true` to process a visit that already has a note. Without it the
+   * request is refused, so a note someone has edited is never replaced by accident.
+   */
+  replaceExisting: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export const processStageSchema = z.enum(['transcribing', 'drafting']);

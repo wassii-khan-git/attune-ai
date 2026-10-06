@@ -1,5 +1,7 @@
 import type { SoapNote, Transcript } from '@attune/shared';
 
+import { SafeError } from '../lib/safe-error.js';
+
 export type AudioInput = {
   data: Uint8Array;
   /** The container format detected from the file's own bytes. */
@@ -22,8 +24,11 @@ export type ScribeModel = {
   draftNote: (transcript: Transcript, signal: AbortSignal) => AsyncIterable<NoteDraftEvent>;
 };
 
-/** Any failure of the model call. `retryable` says whether trying again could help. */
-export class ScribeModelError extends Error {
+/**
+ * Any failure of the model call. `retryable` says whether trying again could help.
+ * The message is written here, never copied from the provider, so it is safe to log.
+ */
+export class ScribeModelError extends SafeError {
   constructor(
     message: string,
     readonly retryable: boolean,

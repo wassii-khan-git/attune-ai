@@ -31,6 +31,7 @@ const app = createApp({
   fieldEncryptionKey: Buffer.alloc(32, 9),
   scribeModel: createFakeScribeModel(),
   secureCookies: false,
+  dailyGenerationBudget: 1_000,
   passwordHashCost: 4,
 });
 
@@ -56,6 +57,7 @@ describe('the API against PostgreSQL', () => {
     const processed = await request(app)
       .post(`/v1/visits/${visitId}/process`)
       .set('Authorization', bearer)
+      .field('durationSec', '30')
       .attach('audio', WAV, { filename: 'visit.wav', contentType: 'audio/wav' })
       .buffer(true)
       .parse((res, done) => {

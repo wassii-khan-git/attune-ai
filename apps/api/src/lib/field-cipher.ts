@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
+import { SafeError } from './safe-error.js';
+
 const ALGORITHM = 'aes-256-gcm';
 const VERSION = 'v1';
 const KEY_BYTES = 32;
@@ -20,7 +22,7 @@ export type FieldCipher = {
 };
 
 /** Carries no detail on purpose: the cause must never surface in a log or an API response. */
-export class DecryptionError extends Error {
+export class DecryptionError extends SafeError {
   constructor() {
     super('Unable to decrypt field');
     this.name = 'DecryptionError';

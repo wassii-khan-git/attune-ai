@@ -1,5 +1,6 @@
 import { Prisma } from '../generated/prisma/client.js';
 import type { Role } from '../generated/prisma/enums.js';
+import { SafeError } from '../lib/safe-error.js';
 import type { PrismaClient } from './prisma.js';
 
 export type { Role };
@@ -16,7 +17,7 @@ export type UserRecord = {
 };
 
 /** The email already belongs to an account. */
-export class EmailTakenError extends Error {
+export class EmailTakenError extends SafeError {
   constructor() {
     super('Email is already registered');
     this.name = 'EmailTakenError';
@@ -34,8 +35,6 @@ export type UserRepository = {
    * and usage counters. Returns whether a row was deleted.
    */
   delete: (id: string) => Promise<boolean>;
-  /** Deletes guest accounts created before `cutoff` and returns their ids. */
-  deleteGuestsCreatedBefore: (cutoff: Date) => Promise<string[]>;
 };
 
 const select = {
@@ -75,16 +74,6 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     delete: async (id) => {
       const { count } = await prisma.user.deleteMany({ where: { id } });
       return count === 1;
-    },
-
-    // One statement: the rows deleted are exactly the rows reported, even if
-    // two runs overlap.
-    deleteGuestsCreatedBefore: async (cutoff) => {
-      const rows = await prisma.$queryRaw<{ id: string }[]>`
-        DELETE FROM users
-        WHERE is_guest AND created_at < ${cutoff}
-        RETURNING id::text AS id`;
-      return rows.map((row) => row.id);
     },
   };
 }

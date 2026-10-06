@@ -1,7 +1,6 @@
 import type { ApiError } from '@attune/shared';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { MulterError } from 'multer';
-import { ZodError } from 'zod';
 
 import { AppError } from '../lib/app-error.js';
 
@@ -19,18 +18,26 @@ function respond(
   };
 }
 
-/** Errors raised by Express's body parsers, identified by their `type` field. */
+/**
+ * Recognises the client errors raised by Express's body parsers (malformed
+ * JSON, body too large and similar). They are `http-errors` objects: a 4xx
+ * status, `expose: true` and a `type`. All three are required, so an unrelated
+ * error that happens to have a `type` field is not mistaken for one.
+ */
 function bodyParserErrorType(error: unknown): string | undefined {
-  if (typeof error === 'object' && error !== null && 'type' in error) {
-    const { type } = error;
-    return typeof type === 'string' ? type : undefined;
+  if (typeof error !== 'object' || error === null) {
+    return undefined;
   }
-  return undefined;
+  const { type, status, expose } = error as { type?: unknown; status?: unknown; expose?: unknown };
+  const isClientError = typeof status === 'number' && status >= 400 && status < 500;
+  return typeof type === 'string' && isClientError && expose === true ? type : undefined;
 }
 
 /**
  * Decides what the client sees. Anything not recognised becomes a generic 500:
- * an unexpected error's own message never leaves the server.
+ * an unexpected error's own message never leaves the server. That includes a
+ * schema failure on our own data, which is why request input is validated
+ * through `parseRequest` and not left to surface as a raw Zod error.
  */
 export function toErrorResponse(error: unknown): ErrorResponse {
   if (error instanceof AppError) {
@@ -39,19 +46,6 @@ export function toErrorResponse(error: unknown): ErrorResponse {
       error.code,
       error.message,
       error.details === undefined ? undefined : [...error.details],
-    );
-  }
-
-  if (error instanceof ZodError) {
-    // Zod messages describe the expected shape and do not echo the received value.
-    return respond(
-      400,
-      'VALIDATION_ERROR',
-      'The request is not valid.',
-      error.issues.map((issue) => ({
-        path: issue.path.map(String).join('.'),
-        message: issue.message,
-      })),
     );
   }
 
@@ -86,6 +80,14 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, req, res, _nex
   const { status, body } = toErrorResponse(error);
   if (status >= 500) {
     req.log.error({ err: error }, 'unhandled error');
+  } else if (error instanceof AppError && error.reason !== undefined) {
+    // A refusal worth being able to find later: a failed sign-in, a replayed
+    // token, a throttled caller. Identifiers and fixed keywords only.
+    const userId = error.userId ?? req.auth?.userId;
+    req.log.warn(
+      { code: error.code, reason: error.reason, ...(userId === undefined ? {} : { userId }) },
+      'request refused',
+    );
   }
   res.status(status).json(body);
 };

@@ -85,6 +85,12 @@ export default defineConfig(
     files: ['apps/api/eval/run.ts'],
     rules: { 'no-console': 'off' },
   },
+  {
+    // Build-time scripts run by Node directly. They print progress and handle no user data.
+    files: ['apps/api/scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+    rules: { 'no-console': 'off' },
+  },
 
   {
     files: ['apps/api/src/**'],

@@ -15,7 +15,7 @@ import { audioUpload } from './middleware/audio-upload.js';
 import { authenticate } from './middleware/authenticate.js';
 import { requireCronSecret } from './middleware/cron-auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
-import { rateLimit } from './middleware/rate-limit.js';
+import { byUser, rateLimit } from './middleware/rate-limit.js';
 import { requestContext } from './middleware/request-context.js';
 import { corsAllowlist, securityHeaders } from './middleware/security.js';
 import { buildOpenApiDocument } from './openapi/document.js';
@@ -43,6 +43,9 @@ const RATE_LIMITS = {
   credentials: { name: 'auth-credentials', limit: 10, windowSec: 5 * 60 },
   session: { name: 'auth-session', limit: 60, windowSec: 5 * 60 },
   guest: { name: 'auth-guest', limit: 5, windowSec: 60 * 60 },
+  // Generous enough for an editor that autosaves every few seconds.
+  visitWrites: { name: 'visit-writes', limit: 300, windowSec: 5 * 60 },
+  visitUploads: { name: 'visit-uploads', limit: 20, windowSec: 5 * 60 },
 } satisfies Record<string, RateLimitPolicy>;
 
 export type AppDependencies = {
@@ -63,6 +66,8 @@ export type AppDependencies = {
   sleep?: (ms: number) => Promise<void>;
   /** False only for local development over plain HTTP. */
   secureCookies: boolean;
+  /** Generations allowed per UTC day across all users. */
+  dailyGenerationBudget: number;
   /** Lowered in tests, where hashing speed matters more than strength. */
   passwordHashCost?: number;
   /** The clock, injectable so tests can move time. */
@@ -85,6 +90,7 @@ export function createApp({
   scribeModel,
   sleep,
   secureCookies,
+  dailyGenerationBudget,
   passwordHashCost = DEFAULT_BCRYPT_COST,
   now = () => new Date(),
 }: AppDependencies): Express {
@@ -139,6 +145,8 @@ export function createApp({
         createGenerationService({
           visits: repositories.visits,
           usage: repositories.usage,
+          rateLimits,
+          dailyBudget: dailyGenerationBudget,
           model: scribeModel,
           cipher,
           audit,
@@ -148,6 +156,10 @@ export function createApp({
       ),
       authenticate: requireUser,
       audioUpload: audioUpload(),
+      limiters: {
+        writes: rateLimit(rateLimits, RATE_LIMITS.visitWrites, byUser),
+        uploads: rateLimit(rateLimits, RATE_LIMITS.visitUploads, byUser),
+      },
     }),
   );
   v1.use(
@@ -164,10 +176,9 @@ export function createApp({
     createInternalRouter(
       createRetentionController(
         createRetentionService({
-          users: repositories.users,
+          retention: repositories.retention,
           refreshTokens: repositories.refreshTokens,
           rateLimits: repositories.rateLimits,
-          audit,
           now,
         }),
       ),

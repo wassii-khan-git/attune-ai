@@ -7,16 +7,18 @@ import type {
   RefreshTokenRecord,
   RefreshTokenRepository,
 } from '../repositories/refresh-token.repository.js';
+import type { RetentionRepository } from '../repositories/retention.repository.js';
 import type { UsageRepository } from '../repositories/usage.repository.js';
 import {
   EmailTakenError,
   type UserRecord,
   type UserRepository,
 } from '../repositories/user.repository.js';
-import type {
-  VisitRecord,
-  VisitRepository,
-  VisitSummaryRecord,
+import {
+  UnknownOwnerError,
+  type VisitRecord,
+  type VisitRepository,
+  type VisitSummaryRecord,
 } from '../repositories/visit.repository.js';
 
 /**
@@ -74,13 +76,6 @@ export function createInMemoryUserRepository(
       remove(id);
     },
     delete: (id) => Promise.resolve(remove(id)),
-    deleteGuestsCreatedBefore: (cutoff) => {
-      const expired = records
-        .filter((record) => record.isGuest && record.createdAt.getTime() < cutoff.getTime())
-        .map((record) => record.id);
-      expired.forEach(remove);
-      return Promise.resolve(expired);
-    },
     createRegistered: ({ email, passwordHash }) => {
       if (records.some((record) => record.email === email)) {
         return Promise.reject(new EmailTakenError());
@@ -175,7 +170,11 @@ function toSummaryRecord(record: VisitRecord): VisitSummaryRecord {
   return { id, userId, title, status, consentAt, durationSec, createdAt, updatedAt };
 }
 
-export function createInMemoryVisitRepository(now: () => Date): InMemoryVisitRepository {
+/** `ownerExists` stands in for the foreign key from visits to users. */
+export function createInMemoryVisitRepository(
+  now: () => Date,
+  ownerExists: (userId: string) => boolean = () => true,
+): InMemoryVisitRepository {
   const records: VisitRecord[] = [];
   const owned = (id: string, userId: string): VisitRecord | undefined =>
     records.find((record) => record.id === id && record.userId === userId);
@@ -191,7 +190,12 @@ export function createInMemoryVisitRepository(now: () => Date): InMemoryVisitRep
     removeForUser: (userId) => {
       removeWhere(records, (record) => record.userId === userId);
     },
+    countForUser: (userId) =>
+      Promise.resolve(records.filter((record) => record.userId === userId).length),
     create: (input) => {
+      if (!ownerExists(input.userId)) {
+        return Promise.reject(new UnknownOwnerError());
+      }
       const record: VisitRecord = {
         id: randomUUID(),
         status: 'DRAFT',
@@ -316,17 +320,47 @@ export type InMemoryRepositories = Repositories & {
   rateLimits: InMemoryRateLimitRepository;
 };
 
+/** Mirrors the single SQL statement: delete the old guests and write their audit rows together. */
+function createInMemoryRetentionRepository(
+  users: InMemoryUserRepository,
+  audit: AuditRepository,
+): RetentionRepository {
+  return {
+    purgeGuestsCreatedBefore: async (cutoff) => {
+      const expired = users.records
+        .filter((record) => record.isGuest && record.createdAt.getTime() < cutoff.getTime())
+        .map((record) => record.id);
+      for (const id of expired) {
+        users.remove(id);
+        await audit.insert({
+          actorId: null,
+          action: 'ACCOUNT_DELETED',
+          resourceType: 'USER',
+          resourceId: id,
+        });
+      }
+      return expired.length;
+    },
+  };
+}
+
 export function createInMemoryRepositories(now: () => Date): InMemoryRepositories {
   const refreshTokens = createInMemoryRefreshTokenRepository();
-  const visits = createInMemoryVisitRepository(now);
+  // The callback reads `users` only when a visit is created, after it has been assigned below.
+  const visits: InMemoryVisitRepository = createInMemoryVisitRepository(now, (userId) =>
+    users.records.some((user) => user.id === userId),
+  );
+  const users = createInMemoryUserRepository(now, (userId) => {
+    refreshTokens.removeForUser(userId);
+    visits.removeForUser(userId);
+  });
+  const audit = createInMemoryAuditRepository();
 
   return {
-    users: createInMemoryUserRepository(now, (userId) => {
-      refreshTokens.removeForUser(userId);
-      visits.removeForUser(userId);
-    }),
+    users,
     refreshTokens,
-    audit: createInMemoryAuditRepository(),
+    audit,
+    retention: createInMemoryRetentionRepository(users, audit),
     rateLimits: createInMemoryRateLimitRepository(),
     visits,
     usage: createInMemoryUsageRepository(),

@@ -26,8 +26,8 @@ export function decodePageCursor(cursor: string): PagePosition {
     const { t, i } = positionSchema.parse(parsed);
     return { createdAt: new Date(t), id: i };
   } catch {
-    throw new AppError(400, 'VALIDATION_ERROR', 'The request is not valid.', [
-      { path: 'cursor', message: 'Invalid cursor' },
-    ]);
+    throw new AppError(400, 'VALIDATION_ERROR', 'The request is not valid.', {
+      details: [{ path: 'cursor', message: 'Invalid cursor' }],
+    });
   }
 }

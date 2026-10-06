@@ -1,6 +1,6 @@
 import { AUDIO_FIELD_NAME, MAX_AUDIO_BYTES } from '@attune/shared';
 import type { RequestHandler } from 'express';
-import multer from 'multer';
+import multer, { MulterError } from 'multer';
 
 import { AppError } from '../lib/app-error.js';
 
@@ -10,7 +10,7 @@ import { AppError } from '../lib/app-error.js';
  * written to disk, a database or object storage.
  */
 export function audioUpload(): RequestHandler {
-  return multer({
+  const parse = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_AUDIO_BYTES, files: 1, fields: 4, fieldSize: 1024 },
     // A cheap first gate on the declared type; the controller then checks the actual bytes.
@@ -18,8 +18,26 @@ export function audioUpload(): RequestHandler {
       if (file.mimetype.startsWith('audio/')) {
         callback(null, true);
       } else {
-        callback(new AppError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Upload an audio recording.'));
+        callback(
+          new AppError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Upload an audio recording.', {
+            reason: 'upload_not_audio',
+          }),
+        );
       }
     },
   }).single(AUDIO_FIELD_NAME);
+
+  return (req, res, next) => {
+    parse(req, res, (error: unknown) => {
+      if (error === undefined || error === null) {
+        next();
+      } else if (error instanceof MulterError || error instanceof AppError) {
+        next(error);
+      } else {
+        // Whatever else fails while reading a multipart body (a missing boundary,
+        // a body cut short) is a broken request, not a server fault.
+        next(new AppError(400, 'BAD_REQUEST', 'The upload could not be read.'));
+      }
+    });
+  };
 }

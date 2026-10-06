@@ -55,7 +55,9 @@ export function authenticate({
 
     const origin = req.get('origin');
     if (!SAFE_METHODS.has(req.method) && origin !== undefined && !allowed.has(origin)) {
-      throw new AppError(403, 'FORBIDDEN', 'This request is not allowed from this origin.');
+      throw new AppError(403, 'FORBIDDEN', 'This request is not allowed from this origin.', {
+        reason: 'forbidden_origin',
+      });
     }
 
     req.auth = await tokens.verifyAccessToken(accessToken);

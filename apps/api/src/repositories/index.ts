@@ -5,6 +5,7 @@ import {
   createRefreshTokenRepository,
   type RefreshTokenRepository,
 } from './refresh-token.repository.js';
+import { createRetentionRepository, type RetentionRepository } from './retention.repository.js';
 import { createUsageRepository, type UsageRepository } from './usage.repository.js';
 import { createUserRepository, type UserRepository } from './user.repository.js';
 import { createVisitRepository, type VisitRepository } from './visit.repository.js';
@@ -17,6 +18,7 @@ export type Repositories = {
   rateLimits: RateLimitRepository;
   visits: VisitRepository;
   usage: UsageRepository;
+  retention: RetentionRepository;
 };
 
 /** The production set, backed by one Prisma client. */
@@ -28,5 +30,6 @@ export function createRepositories(prisma: PrismaClient): Repositories {
     rateLimits: createRateLimitRepository(prisma),
     visits: createVisitRepository(prisma),
     usage: createUsageRepository(prisma),
+    retention: createRetentionRepository(prisma),
   };
 }

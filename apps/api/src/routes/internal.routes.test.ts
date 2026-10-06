@@ -125,8 +125,9 @@ describe('GET /internal/cron/retention', () => {
     expect(logs.entries()).toContainEqual(
       expect.objectContaining({
         msg: 'retention run completed',
-        // The guest's session went with the account, through the cascade.
-        purged: { guestAccounts: 1, refreshTokens: 0, rateLimitBuckets: 1 },
+        // The guest's session went with the account, through the cascade. The two
+        // counters are the ones for creating the guest and for creating its visit.
+        purged: { guestAccounts: 1, refreshTokens: 0, rateLimitBuckets: 2 },
       }),
     );
     expect(logs.raw()).not.toContain(guest.userId);

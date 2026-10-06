@@ -18,7 +18,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "eval": "tsx --env-file-if-exists=.env eval/run.ts",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "migrate:production": "node scripts/migrate-on-production.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.87",

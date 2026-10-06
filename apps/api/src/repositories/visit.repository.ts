@@ -1,5 +1,6 @@
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import type { VisitStatus } from '../generated/prisma/enums.js';
+import { SafeError } from '../lib/safe-error.js';
 import { escapeLikePattern } from './like-pattern.js';
 import type { PrismaClient } from './prisma.js';
 
@@ -41,11 +42,13 @@ export type ListVisitsInput = {
  * found. Ownership cannot be forgotten by a caller.
  */
 export type VisitRepository = {
+  /** Rejects with `UnknownOwnerError` if the user does not exist. */
   create: (input: {
     userId: string;
     title: string;
     consentAt: Date | null;
   }) => Promise<VisitSummaryRecord>;
+  countForUser: (userId: string) => Promise<number>;
   /** Newest first. */
   list: (input: ListVisitsInput) => Promise<VisitSummaryRecord[]>;
   findOwned: (id: string, userId: string) => Promise<VisitRecord | null>;
@@ -94,6 +97,16 @@ const fullSelect = {
   noteEnc: true,
 } satisfies Prisma.VisitSelect;
 
+/** The visit's owner is not in the database: the account was deleted while its token was still valid. */
+export class UnknownOwnerError extends SafeError {
+  constructor() {
+    super('The owner of the visit does not exist');
+    this.name = 'UnknownOwnerError';
+  }
+}
+
+const FOREIGN_KEY_VIOLATION = 'P2003';
+
 /** Matches visits with no run in flight: any other status, or a PROCESSING row untouched since `staleBefore`. */
 function notBeingProcessed(staleBefore: Date): Prisma.VisitWhereInput {
   return {
@@ -103,7 +116,21 @@ function notBeingProcessed(staleBefore: Date): Prisma.VisitWhereInput {
 
 export function createVisitRepository(prisma: PrismaClient): VisitRepository {
   return {
-    create: (data) => prisma.visit.create({ data, select: summarySelect }),
+    create: async (data) => {
+      try {
+        return await prisma.visit.create({ data, select: summarySelect });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === FOREIGN_KEY_VIOLATION
+        ) {
+          throw new UnknownOwnerError();
+        }
+        throw error;
+      }
+    },
+
+    countForUser: (userId) => prisma.visit.count({ where: { userId } }),
 
     list: ({ userId, titleContains, after, take }) =>
       prisma.visit.findMany({
