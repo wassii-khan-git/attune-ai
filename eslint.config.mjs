@@ -98,6 +98,12 @@ export default defineConfig(
     },
   },
   {
+    // Generated shadcn/ui primitives. A generic <Label> cannot know its control;
+    // the association is made where it is used, with htmlFor.
+    files: ['apps/web/src/components/ui/**'],
+    rules: { 'jsx-a11y/label-has-associated-control': 'off' },
+  },
+  {
     // A command-line report over synthetic data: printing to the terminal is its purpose.
     files: ['apps/api/eval/run.ts'],
     rules: { 'no-console': 'off' },
