@@ -18,6 +18,9 @@ jobs:
     name: Lint, typecheck and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # The web app refuses to typecheck or build without an API address. Nothing calls it here.
+      API_URL: http://localhost:4000
     steps:
       # Actions are pinned to a commit, so a moved tag cannot change what runs. Dependabot updates the pins.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,6 +35,8 @@ jobs:
       - run: pnpm typecheck
       # Fails if coverage of apps/api/src/services drops below 80%.
       - run: pnpm test:coverage
+      - name: Web unit tests
+        run: pnpm turbo run test --filter=@attune/web
       # The production build uses its own tsconfig, so it is checked separately from typecheck.
       - run: pnpm build
 
