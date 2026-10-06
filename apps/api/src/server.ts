@@ -1,6 +1,6 @@
-/* eslint-disable no-console -- boot output only, and it carries no request data; the redacting logger replaces it in step 1.4 */
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
+import { createLogger } from './lib/logger.js';
 import { createHealthRepository } from './repositories/health.repository.js';
 import { createPrismaClient } from './repositories/prisma.js';
 
@@ -9,7 +9,11 @@ function loadConfigOrExit(): Config {
     return loadConfig(process.env);
   } catch (error) {
     if (error instanceof ConfigError) {
-      console.error(error.message);
+      // The problems name variables and rules, never values.
+      createLogger({ level: 'fatal' }).fatal(
+        { problems: error.problems },
+        'Invalid environment configuration; refusing to start',
+      );
       process.exit(1);
     }
     throw error;
@@ -17,10 +21,13 @@ function loadConfigOrExit(): Config {
 }
 
 const config = loadConfigOrExit();
+const logger = createLogger({ level: config.LOG_LEVEL });
 
 const healthRepository = createHealthRepository(createPrismaClient(config.DATABASE_URL));
 
 const app = createApp({
+  logger,
+  corsAllowedOrigins: config.CORS_ALLOWED_ORIGINS,
   readinessChecks: [{ name: 'database', run: healthRepository.pingDatabase }],
 });
 
@@ -28,5 +35,5 @@ app.listen(config.PORT, (error) => {
   if (error) {
     throw error;
   }
-  console.info(`API listening on port ${String(config.PORT)}`);
+  logger.info({ port: config.PORT }, 'API listening');
 });

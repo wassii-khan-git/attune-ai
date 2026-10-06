@@ -5,6 +5,8 @@
 - Phase 1, Step 1.1: monorepo scaffold (pnpm + Turborepo, `apps/api`, `packages/shared`, root ESLint/Prettier/tsconfig, validated config, `/health` and `/ready`, ADR 0001 and 0002)
 - Phase 1, Step 1.2: database schema (Prisma 7 on Neon, five models, first migration applied, AES-256-GCM field cipher with tests, `/ready` checks the database)
 
+- Phase 1, Step 1.4: security baseline (helmet, CORS allowlist, pino logger with redaction, request ids, error envelope, audit service). Done before 1.3 because auth depends on it.
+
 ## Next
 
 - Phase 1, Step 1.3: auth
@@ -32,6 +34,10 @@
 - Field encryption: `src/lib/field-cipher.ts`. Build it once with `createFieldCipher(Buffer.from(config.ENCRYPTION_KEY, 'base64'))` and pass a context such as `visit:<id>:note` to every call. It is not wired to any route yet (step 1.5).
 - A fresh connection from the dev machine to Neon (us-east-2) takes about 2 s, so the readiness timeout is 5 s. For step 1.7: place the Vercel function region next to the database.
 
-### Left for step 1.4
+### HTTP, logging and errors
 
-- Unknown routes return Express's default HTML 404, `X-Powered-By` is still sent, and `server.ts` uses `console` for boot output (drop its eslint-disable when pino lands).
+- Middleware order in `src/app.ts`: request context, helmet, CORS, JSON parser, routes, 404, error handler. New routers mount under `/v1` before the 404 handler.
+- Throw `AppError(status, code, message)` for expected failures and let Zod errors propagate; `src/middleware/error-handler.ts` turns both into `{ error: { code, message, details? } }`. Add new codes to `errorCodeSchema` in `packages/shared`.
+- Log through `req.log` (bound to the request id), never the root logger and never `console`. Request lines hold method, path, status and duration only. `src/lib/logger.ts` redacts sensitive keys and strips extra properties from errors; add any new sensitive key to `SENSITIVE_KEYS`.
+- `AuditService.record` rejects when the row cannot be written, and callers let that fail the request.
+- Tests build the real app with `createTestApp()` from `src/testing`, which also captures log output.
