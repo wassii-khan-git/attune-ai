@@ -11,9 +11,11 @@
 
 - Phase 1, Step 1.6: AI pipeline (`POST /v1/visits/:id/process`: audio upload, Gemini transcription and note drafting, NDJSON stream, daily quota, timeout and one retry, ADR 0003)
 
+- Phase 1, Step 1.6b: AI evaluation (`pnpm eval`: five synthetic transcripts in `apps/api/eval`, checked for required facts, invented claims and "Not discussed" sections)
+
 ## Next
 
-- Phase 1, Step 1.6b: AI evaluation
+- Phase 1, Step 1.7: docs, retention and CI
 
 ## Notes / decisions
 
@@ -74,6 +76,8 @@
 - Quota: 10 generations per UTC day, 3 for guests. A run counts when it starts and is not refunded if it fails.
 - The audio type is detected from the file's bytes (`src/lib/audio-format.ts`), not from the client's header. A real run with AAC in an MP4 container worked. WebM/Opus from Chrome's `MediaRecorder` has not been tried against Gemini: check it in step 2.3 and record in another container if it is refused.
 - On 2026-10-06 `gemini-3.8-flash` and `gemini-3.5-flash` answered 503 "high demand" even for a one-line prompt, while `gemini-3.5-flash-lite` completed the full pipeline in about 9 s for a 31 s recording. `GEMINI_MODEL` in `.env` is the owner's choice and was left unchanged.
+
+- `pnpm eval` calls the live model (five requests) and is not part of CI. It evaluates note drafting only, because transcription needs audio. Checks are plain pattern matches in `eval/cases.ts`; run it after any prompt or model change. Result on 2026-10-06 with `note-v1`: 5/5 on `gemini-3.5-flash-lite`; `gemini-3.8-flash` could not be evaluated (503 on every case).
 
 ### Testing
 

@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "eval": "turbo run build --filter=@attune/shared && pnpm --filter @attune/api eval",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -76,6 +76,11 @@ export default defineConfig(
     files: ['**/*.{js,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
   },
+  {
+    // A command-line report over synthetic data: printing to the terminal is its purpose.
+    files: ['apps/api/eval/run.ts'],
+    rules: { 'no-console': 'off' },
+  },
 
   {
     files: ['apps/api/src/**'],
