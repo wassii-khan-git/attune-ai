@@ -121,3 +121,22 @@
     background-color: color-mix(in oklch, var(--primary) 25%, transparent);
   }
 }
+
+/*
+ * Paper. Printing is how a note is saved as a PDF, so the page must read well
+ * in black on white whatever theme is on screen. What is left off the page
+ * (navigation, buttons, the transcript) is marked `print:hidden` where it is used.
+ */
+@media print {
+  @page {
+    margin: 18mm;
+  }
+
+  :root,
+  .dark {
+    --background: white;
+    --foreground: black;
+    --muted-foreground: oklch(0.4 0 0);
+    --border: oklch(0.8 0 0);
+  }
+}

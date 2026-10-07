@@ -3,11 +3,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { buttonVariants } from '@/components/ui/button';
+import { NEW_VISIT } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Visits' };
-
-const NEW_VISIT = '/visits/new';
 
 /** The home of the signed-in app. For now it only leads to a new visit; the list itself comes next. */
 export default function VisitsPage() {
