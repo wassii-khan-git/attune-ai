@@ -46,11 +46,16 @@ export function CopyButton({ label, getText, className }: CopyButtonProps) {
   };
 
   return (
-    <Button type="button" variant="outline" className={className} onClick={copy}>
-      {outcome === 'copied' ? <Check aria-hidden /> : <Copy aria-hidden />}
-      <span role="status">
+    <>
+      <Button type="button" variant="outline" className={className} onClick={copy}>
+        {outcome === 'copied' ? <Check aria-hidden /> : <Copy aria-hidden />}
         {outcome === 'copied' ? 'Copied' : outcome === 'failed' ? 'Could not copy' : label}
+      </Button>
+      {/* Announced from outside the button: text inside a button is its name, not a message. */}
+      <span role="status" className="sr-only">
+        {outcome === 'copied' && 'Copied to the clipboard'}
+        {outcome === 'failed' && 'Copying failed'}
       </span>
-    </Button>
+    </>
   );
 }
