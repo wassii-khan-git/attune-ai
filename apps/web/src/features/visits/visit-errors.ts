@@ -1,17 +1,14 @@
+import { describeRequestError } from '@/lib/api/describe-error';
 import { isApiError } from '@/lib/api/errors';
-import { formatWait } from '@/lib/format';
-
-const GENERIC = 'Something went wrong. Please try again.';
 
 /** Why a visit could not be loaded, as a sentence for the page. */
 export function describeLoadError(error: unknown): string {
-  if (isApiError(error) && error.code === 'NETWORK_ERROR') {
-    return error.message;
-  }
-  if (isApiError(error) && error.code === 'RATE_LIMITED') {
-    return `Too many requests. Try again in ${formatWait(error.retryAfterSec)}.`;
-  }
-  return 'This visit could not be loaded. Please try again.';
+  return describeRequestError(error, 'This visit could not be loaded. Please try again.');
+}
+
+/** Why the list of visits could not be loaded. */
+export function describeListError(error: unknown): string {
+  return describeRequestError(error, 'Your visits could not be loaded. Please try again.');
 }
 
 export type SaveFailure = {
@@ -65,11 +62,5 @@ export function describeSaveError(error: unknown): SaveFailure {
 
 /** Why a visit could not be deleted. */
 export function describeDeleteError(error: unknown): string {
-  if (isApiError(error) && error.code === 'NETWORK_ERROR') {
-    return error.message;
-  }
-  if (isApiError(error) && error.code === 'RATE_LIMITED') {
-    return `Too many requests. Try again in ${formatWait(error.retryAfterSec)}.`;
-  }
-  return GENERIC;
+  return describeRequestError(error, 'This visit could not be deleted. Please try again.');
 }

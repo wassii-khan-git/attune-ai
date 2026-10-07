@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '@/lib/api/errors';
 
-import { describeDeleteError, describeLoadError, describeSaveError } from './visit-errors';
+import {
+  describeDeleteError,
+  describeListError,
+  describeLoadError,
+  describeSaveError,
+} from './visit-errors';
 
 const failure = (code: ApiError['code'], message = 'From the API.', retryAfterSec?: number) =>
   new ApiError(400, code, message, [], retryAfterSec);
@@ -57,7 +62,10 @@ describe('describeLoadError and describeDeleteError', () => {
       'This visit could not be loaded. Please try again.',
     );
     expect(describeDeleteError(failure('INTERNAL_ERROR'))).toBe(
-      'Something went wrong. Please try again.',
+      'This visit could not be deleted. Please try again.',
+    );
+    expect(describeListError(failure('INTERNAL_ERROR'))).toBe(
+      'Your visits could not be loaded. Please try again.',
     );
   });
 });
