@@ -8,6 +8,8 @@ loadServerEnv();
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // Keeps `next dev` from writing its own guidance files into the project.
+  agentRules: false,
 };
 
 export default nextConfig;

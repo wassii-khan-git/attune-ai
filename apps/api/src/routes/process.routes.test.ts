@@ -172,6 +172,32 @@ describe('POST /v1/visits/:id/process', () => {
     expect(model.draftCalls).toEqual([FAKE_TRANSCRIPT]);
   });
 
+  it('writes blank lines while the model is working, so that no proxy drops a silent connection', async () => {
+    const model = createFakeScribeModel({
+      onTranscribe: () => new Promise((resolve) => setTimeout(resolve, 80)),
+    });
+    const { app } = createTestApp({ scribeModel: model, streamKeepAliveMs: 10 });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    const lines = String(response.body).split('\n');
+    const transcriptAt = lines.findIndex((line) => line.includes('"type":"transcript"'));
+    const whileTranscribing = lines.slice(1, transcriptAt);
+    expect(whileTranscribing.length).toBeGreaterThan(0);
+    expect(whileTranscribing.every((line) => line === '')).toBe(true);
+    // The blank lines are not events: the run reads exactly as it does without them.
+    expect(events(response).map((event) => event.type)).toEqual([
+      'stage',
+      'transcript',
+      'stage',
+      'note',
+      'note',
+      'done',
+    ]);
+  });
+
   it('passes the model the format found in the bytes, not the one the client declared', async () => {
     const { app, model } = setup();
     const alice = await signUp(app);
