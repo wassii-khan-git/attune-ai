@@ -10,4 +10,5 @@ export const DISCLAIMER = {
   guest:
     'You are using a guest session. It ends 24 hours after it started, and its data is then deleted.',
   recording: 'Use invented conversations only. Never record or upload a real patient.',
+  draft: 'Drafted by AI from the conversation. Read it and correct it before relying on it.',
 } as const;
