@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
-const SECTION_MAX_LENGTH = 10_000;
+/** The most text one section of a note may hold. */
+export const NOTE_SECTION_MAX_LENGTH = 10_000;
 
 /** What a section holds when the conversation did not cover it. Findings are never invented. */
 export const NOT_DISCUSSED = 'Not discussed';
 
-const soapSection = z.string().trim().max(SECTION_MAX_LENGTH);
+const soapSection = z.string().trim().max(NOTE_SECTION_MAX_LENGTH);
 
 /** A SOAP note: the single shape used for model output, storage and editing. */
 export const soapNoteSchema = z.object({
