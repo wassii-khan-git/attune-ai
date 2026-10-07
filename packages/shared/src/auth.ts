@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /** Emails are compared and stored lower-cased, so the same address always maps to one account. */
 export const emailSchema = z.string().trim().toLowerCase().pipe(z.email().max(254));

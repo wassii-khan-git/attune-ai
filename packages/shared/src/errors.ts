@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /** Machine-readable error codes. Clients branch on these, never on the message text. */
 export const errorCodeSchema = z.enum([

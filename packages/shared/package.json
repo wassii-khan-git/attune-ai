@@ -4,7 +4,10 @@
   "private": true,
   "description": "Zod schemas and inferred types shared by the API, web and mobile apps.",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/zod-setup.js",
+    "./dist/index.js"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

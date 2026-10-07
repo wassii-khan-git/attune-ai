@@ -1,6 +1,6 @@
 # Threat model
 
-Last reviewed: 2026-10-06, after the security review of `apps/api`. It covers the API. The web and mobile apps will add their own sections when they are built.
+Last reviewed: 2026-10-08, after the review of `apps/web`. It covers the API and the web app. The mobile app will add its own section when it is built.
 
 ## Scope and honesty
 
@@ -139,21 +139,38 @@ Design records: [ADR 0006](adr/0006-rate-limits-and-quotas-in-postgres.md), [ADR
 | Clinical text in the audit trail | Its columns are identifiers, enumerations and a timestamp. There is nowhere to put free text.                                                                                                                                                                | Rows keep the account's identifier after the account is deleted.                                                                                                          |
 | Tampering with the record        | Rows are only ever inserted by the application.                                                                                                                                                                                                              | The trail lives in the same database and is not tamper-evident. Anyone with database write access could alter it.                                                         |
 
+### The web app
+
+The web app is a Next.js site on its own Vercel project. The browser only ever talks to that site, which forwards API calls to the API at the same path ([ADR 0007](adr/0007-same-origin-proxy-for-the-web-app.md)). What the browser keeps between visits is two timestamps and the theme. Recordings, transcripts and notes exist only in the memory of the open page.
+
+| Threat                                           | Mitigation                                                                                                                                                                                                                                                                                                    | What remains                                                                                                                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A script injected into a page                    | A content security policy with a fresh nonce per response: only scripts carrying it run, and nothing may generate code at run time. No script, style, font or image is loaded from another site. The transcript and the note, which are model output, are rendered as text and never as markup.               | Styles allow inline declarations. A script that did run could act as the user while the page is open.                                                                              |
+| Clinical text left behind on a shared computer   | Notes and transcripts are never put in browser storage. API responses are marked `no-store`. The note fields opt out of the browser's saved form data. A visit's title is kept out of the tab title, and the search text out of the address bar. A session ends after 15 minutes without input, in every tab. | Anything the user copies, prints or saves as a PDF has left the app. The print dialog can add the page address, which contains the visit's identifier.                             |
+| Clinical text sent somewhere else by the browser | The app sends data only to its own origin. Nothing is logged to the console, and the error page never shows an error's text.                                                                                                                                                                                  | Spellcheck stays on in the note editor. A browser whose user has turned on its cloud spellcheck sends what is typed to the browser's vendor. Browser extensions can read any page. |
+| Recording without consent                        | The record button does not start until consent is confirmed, and the API refuses to process a visit without it. The microphone is the only device feature the site may use, and only on its own origin.                                                                                                       | Consent is the user's statement. Nothing can verify it.                                                                                                                            |
+| A recording kept longer than needed              | It lives in the page's memory until it is uploaded, and is dropped once the note exists. It is never written to browser storage.                                                                                                                                                                              | It stays in memory while a failed run can still be retried.                                                                                                                        |
+| Losing an edit                                   | A note saves itself after each pause in typing, when a field is left and when the page is left. A failed save keeps the text and is retried. The browser warns before unsaved text is discarded. See [ADR 0009](adr/0009-editing-saving-and-exporting-the-note.md).                                           | Two tabs editing one note: the later save wins. A sign-out for inactivity discards text that could not be saved.                                                                   |
+| Being sent to another site after sign-in         | The return address after sign-in must be a path on this site. Absolute and protocol-relative addresses are refused.                                                                                                                                                                                           | None known.                                                                                                                                                                        |
+| The site shown inside another site               | Framing is forbidden by the content security policy and by `X-Frame-Options`.                                                                                                                                                                                                                                 | None known.                                                                                                                                                                        |
+| A forged client address through the proxy        | The web app removes any address a visitor supplies, and the API believes the forwarded one only with a secret the two apps share.                                                                                                                                                                             | If the secret is not set, all browsers share one limit before sign-in. That fails closed.                                                                                          |
+
 ## Known limits of the demo
 
 These are accepted for a demo and would each need work before real use.
 
 - **No compliance.** Not HIPAA compliant. No BAA with any provider. Recordings and transcripts are sent to a third-party model.
 - **Account lifecycle.** No email verification, password reset or multi-factor sign-in. Registration reveals whether an email is already registered. Deleting an account does not ask for the password again.
-- **Sessions.** An access token stays valid for up to 15 minutes after logout. The 15-minute idle timeout will be enforced by the web client, not by the server.
+- **Sessions.** An access token stays valid for up to 15 minutes after logout. The 15-minute idle timeout is enforced by the web client, not by the server.
 - **Retention.** Guest data can live up to about 48 hours, because the free plan's scheduler runs once a day at an unspecified minute.
 - **Encryption.** One key, no rotation. Titles and emails are not encrypted.
 - **Throttling.** Limits before sign-in are per address and use fixed windows, which allow a short burst across a window boundary.
-- **Search.** The title search term travels in the URL, where platform logs and browser history keep it.
+- **Search.** The web app keeps the title search out of the address bar, but the term still travels as a query parameter of an API request, where the hosting platform's logs can keep it.
 - **Recording length.** Declared by the client. The server enforces file size.
 - **Monitoring.** Security events are logged but nothing alerts on them.
 - **Database access.** A single role with full rights; no row-level security.
 - **Audit trail.** Not tamper-evident, and stored beside the data it describes.
+- **The browser.** Cloud spellcheck, extensions, the clipboard and printed copies are outside the app's control. The warning before leaving a page with an unsent recording does not cover the browser's back button.
 
 ## What real patient data would require
 
