@@ -2,6 +2,7 @@
 
 import { MAX_RECORDING_SEC } from '@attune/shared';
 import { Mic, Square } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -34,13 +35,22 @@ type RecorderPanelProps = {
 /** The microphone controls: a start button, then a timer, a live waveform and a stop button. */
 export function RecorderPanel({ recorder, onStart }: RecorderPanelProps) {
   const { state, elapsedSec } = recorder;
+  const stopRef = useRef<HTMLButtonElement>(null);
+
+  // "Start" has just been replaced by "Stop": keep the keyboard where the action is.
+  const recording = state.status === 'recording';
+  useEffect(() => {
+    if (recording) {
+      stopRef.current?.focus();
+    }
+  }, [recording]);
 
   if (state.status === 'recording') {
     const endingSoon = MAX_RECORDING_SEC - elapsedSec <= WARN_WHEN_LEFT_SEC;
     return (
       <div className="space-y-4 rounded-xl border bg-card p-5">
         <div className="flex items-center justify-between gap-4">
-          <p className="flex items-center gap-2 font-medium">
+          <p role="status" className="flex items-center gap-2 font-medium">
             <span aria-hidden className="size-2.5 animate-pulse rounded-full bg-destructive" />
             Recording
           </p>
@@ -55,6 +65,7 @@ export function RecorderPanel({ recorder, onStart }: RecorderPanelProps) {
         </div>
         <Waveform analyser={state.analyser} />
         <Button
+          ref={stopRef}
           type="button"
           variant="outline"
           className="h-11 px-5 text-base"

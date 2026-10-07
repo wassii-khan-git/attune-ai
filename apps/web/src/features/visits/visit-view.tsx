@@ -177,13 +177,25 @@ export function VisitView({ id }: VisitViewProps) {
     </section>
   );
 
-  if (live !== null && live.phase !== 'done') {
-    return <LiveRun state={live} onRetry={retry} deleteSection={deleteSection} />;
-  }
+  // One region that outlives every state of the page, so that a screen reader
+  // hears a run move on and hears when the note is ready.
+  const announcement =
+    live === null
+      ? ''
+      : live.phase === 'running'
+        ? STEP_LABEL[live.step]
+        : live.phase === 'failed'
+          ? 'The note could not be created'
+          : 'The note is ready to read and edit';
 
-  const visit = live?.visit ?? (load.status === 'ready' ? load.visit : null);
-  if (visit !== null) {
-    return (
+  const finished = live?.phase === 'done' ? live.visit : null;
+  const visit = finished ?? (load.status === 'ready' ? load.visit : null);
+
+  let content: ReactNode;
+  if (live !== null && live.phase !== 'done') {
+    content = <LiveRun state={live} onRetry={retry} deleteSection={deleteSection} />;
+  } else if (visit !== null) {
+    content = (
       <Frame title={visit.title} about={aboutVisit(visit)}>
         {visit.note !== null ? (
           <div className={TWO_COLUMNS}>
@@ -200,10 +212,8 @@ export function VisitView({ id }: VisitViewProps) {
         {deleteSection}
       </Frame>
     );
-  }
-
-  if (load.status === 'missing') {
-    return (
+  } else if (load.status === 'missing') {
+    content = (
       <Frame title="Visit not found">
         <p className="text-muted-foreground">This visit does not exist, or it has been deleted.</p>
         <Link href={APP_HOME} className={cn(buttonVariants(), 'h-11 px-5 text-base')}>
@@ -211,10 +221,8 @@ export function VisitView({ id }: VisitViewProps) {
         </Link>
       </Frame>
     );
-  }
-
-  if (load.status === 'error') {
-    return (
+  } else if (load.status === 'error') {
+    content = (
       <Frame title="Visit">
         <Alert variant="destructive">
           <AlertDescription>{load.message}</AlertDescription>
@@ -224,13 +232,22 @@ export function VisitView({ id }: VisitViewProps) {
         </Button>
       </Frame>
     );
+  } else {
+    content = (
+      <div className="flex justify-center py-24" role="status">
+        <Spinner className="size-6 text-muted-foreground" />
+        <span className="sr-only">Loading the visit</span>
+      </div>
+    );
   }
 
   return (
-    <div className="flex justify-center py-24" role="status">
-      <Spinner className="size-6 text-muted-foreground" />
-      <span className="sr-only">Loading the visit</span>
-    </div>
+    <>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
+      {content}
+    </>
   );
 }
 
@@ -262,10 +279,6 @@ function LiveRun({ state, onRetry, deleteSection }: LiveRunProps) {
   return (
     <Frame title={state.title} about="Creating the note">
       <RunSteps state={state} />
-      {/* Read out as the run moves on, for someone who cannot see the page change. */}
-      <p role="status" className="sr-only">
-        {STEP_LABEL[state.step]}
-      </p>
       <div className={TWO_COLUMNS}>
         <LiveNote note={state.note} />
         <TranscriptColumn>

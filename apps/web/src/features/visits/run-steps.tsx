@@ -18,6 +18,14 @@ export const STEP_LABEL: Record<RunStep, string> = {
   drafting: 'Drafting the note',
 };
 
+/** The step's state in words, for a screen reader: the icons alone say nothing to it. */
+const STATUS_TEXT: Record<StepStatus, string> = {
+  active: 'In progress',
+  complete: 'Done',
+  failed: 'Failed',
+  waiting: 'Not started',
+};
+
 function StepIcon({ status }: { status: StepStatus }) {
   switch (status) {
     case 'active':
@@ -55,6 +63,7 @@ export function RunSteps({ state }: { state: Exclude<RunState, { phase: 'idle' }
             <div className="flex items-center gap-3">
               <StepIcon status={status} />
               <span className={cn('flex-1', status === 'waiting' && 'text-muted-foreground')}>
+                <span className="sr-only">{STATUS_TEXT[status]}: </span>
                 {STEP_LABEL[step]}
               </span>
               {detail !== null && (

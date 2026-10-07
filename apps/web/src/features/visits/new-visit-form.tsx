@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { TextField } from '@/features/auth/form-fields';
 import { DISCLAIMER } from '@/lib/disclaimer';
 import { visitPath } from '@/lib/navigation';
+import { useLeaveWarning } from '@/lib/navigation-guard';
 
 import { AudioPreview } from './audio-preview';
 import { FilePicker } from './file-picker';
@@ -52,7 +53,12 @@ export function NewVisitForm() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const consentRef = useRef<HTMLInputElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const focusFirstError = useRef(false);
+  // Parts of this form replace each other, and the control that was just used
+  // disappears with its part. This names where the focus should go next.
+  const focusNext = useRef<'preview' | 'source' | 'submit' | null>(null);
 
   const [consent, setConsent] = useState(false);
   const [source, setSource] = useState<Source>('record');
@@ -69,6 +75,7 @@ export function NewVisitForm() {
   };
 
   const select = (chosen: SelectedAudio): void => {
+    focusNext.current = 'preview';
     setAudio(chosen);
     clearError('audio');
     if (!titleEdited) {
@@ -93,6 +100,22 @@ export function NewVisitForm() {
     recorder.start();
   };
 
+  useEffect(() => {
+    const target = focusNext.current;
+    if (target === null) {
+      return;
+    }
+    const element = {
+      preview: () => previewRef.current,
+      source: () => formRef.current?.querySelector<HTMLElement>('input[name="source"]:checked'),
+      submit: () => submitRef.current,
+    }[target]();
+    if (element !== null && element !== undefined) {
+      focusNext.current = null;
+      element.focus();
+    }
+  });
+
   // After a failed submit, put the cursor where the first problem is.
   useEffect(() => {
     if (focusFirstError.current) {
@@ -103,6 +126,14 @@ export function NewVisitForm() {
 
   // Audio that has not been uploaded exists only in this tab: warn before a reload or a closed tab loses it.
   const unsaved = audio !== null || recorderBusy;
+  // A link inside the app gives no such warning by itself. Once the recording is
+  // on its way to the API it is safe to leave: the run carries on without this page.
+  const uploadingHere = startedHere && runState.phase === 'running';
+  useLeaveWarning(
+    unsaved && !uploadingHere
+      ? 'The recording on this page has not been turned into a note yet. Leave and discard it?'
+      : null,
+  );
   useEffect(() => {
     if (!unsaved) {
       return;
@@ -156,6 +187,7 @@ export function NewVisitForm() {
         state={runState}
         onRetry={retry}
         onBack={() => {
+          focusNext.current = 'submit';
           abandon();
           setStartedHere(false);
         }}
@@ -263,8 +295,10 @@ export function NewVisitForm() {
           </>
         ) : (
           <AudioPreview
+            ref={previewRef}
             audio={audio}
             onRemove={() => {
+              focusNext.current = 'source';
               setAudio(null);
             }}
           />
@@ -297,7 +331,7 @@ export function NewVisitForm() {
         />
       </section>
 
-      <Button type="submit" className="h-11 px-5 text-base">
+      <Button ref={submitRef} type="submit" className="h-11 px-5 text-base">
         Create note
       </Button>
     </form>

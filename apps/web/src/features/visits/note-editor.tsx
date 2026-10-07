@@ -97,6 +97,8 @@ export function NoteEditor({ visitId, title, initialNote }: NoteEditorProps) {
             id={`note-${key}`}
             value={note[key]}
             maxLength={NOTE_SECTION_MAX_LENGTH}
+            // Keeps the text out of the browser's saved form data and session restore.
+            autoComplete="off"
             className="print:hidden"
             onChange={(event) => {
               edit(key, event.target.value);

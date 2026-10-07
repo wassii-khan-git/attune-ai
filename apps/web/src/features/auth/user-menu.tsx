@@ -1,12 +1,14 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useConfirmLeave } from '@/lib/navigation-guard';
 
 import { useAuth } from './auth-provider';
 
 /** Who is signed in, and a way to sign out. */
 export function UserMenu() {
   const { state, logout } = useAuth();
+  const confirmLeave = useConfirmLeave();
   if (state.status !== 'authenticated') {
     return null;
   }
@@ -20,7 +22,9 @@ export function UserMenu() {
         variant="outline"
         size="lg"
         onClick={() => {
-          void logout();
+          if (confirmLeave()) {
+            void logout();
+          }
         }}
       >
         Sign out
