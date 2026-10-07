@@ -1,16 +1,20 @@
 import {
+  AUDIO_FIELD_NAME,
   authResponseSchema,
   listVisitsResponseSchema,
   meResponseSchema,
+  processEventSchema,
   sessionResponseSchema,
   visitDetailResponseSchema,
   visitResponseSchema,
   type CreateVisitRequest,
   type LoginRequest,
+  type ProcessEvent,
   type RegisterRequest,
   type SoapNote,
 } from '@attune/shared';
 
+import { invalidResponse } from './errors';
 import type { HttpClient } from './http';
 
 /** What a caller may pass to the visit list. The server applies its own defaults and limits. */
@@ -18,6 +22,24 @@ export type VisitListParams = {
   q?: string | undefined;
   cursor?: string | undefined;
   limit?: number | undefined;
+};
+
+export type ProcessVisitInput = {
+  audio: Blob;
+  /** Names the uploaded part. The server keeps neither the name nor the audio. */
+  fileName: string;
+  /** Length of the recording in whole seconds, as measured in the browser. */
+  durationSec: number;
+  /** Set only after the user agreed to replace the note this visit already has. */
+  replaceExisting?: boolean;
+};
+
+export type ProcessVisitHandlers = {
+  /** Called for each event of the run, in order. The last one is `done` or `error`. */
+  onEvent: (event: ProcessEvent) => void;
+  /** Called while the recording uploads, with the share sent so far, from 0 to 1. */
+  onUploadProgress?: (fraction: number) => void;
+  signal?: AbortSignal;
 };
 
 const AUTH = '/v1/auth';
@@ -81,6 +103,34 @@ export function createApi(http: HttpClient) {
         }),
       remove: (id: string) =>
         http.send(`${VISITS}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      /**
+       * Uploads a recording and follows the transcription and the note as they
+       * are produced. A refusal rejects like any other call; once the run has
+       * started, a failure arrives as its last event instead.
+       */
+      process: (id: string, input: ProcessVisitInput, handlers: ProcessVisitHandlers) => {
+        const body = new FormData();
+        body.append('durationSec', String(input.durationSec));
+        if (input.replaceExisting === true) {
+          body.append('replaceExisting', 'true');
+        }
+        body.append(AUDIO_FIELD_NAME, input.audio, input.fileName);
+
+        return http.stream(`${VISITS}/${encodeURIComponent(id)}/process`, {
+          body,
+          onLine: (line) => {
+            const event = processEventSchema.safeParse(line);
+            if (!event.success) {
+              throw invalidResponse(200);
+            }
+            handlers.onEvent(event.data);
+          },
+          ...(handlers.onUploadProgress === undefined
+            ? {}
+            : { onUploadProgress: handlers.onUploadProgress }),
+          ...(handlers.signal === undefined ? {} : { signal: handlers.signal }),
+        });
+      },
     },
 
     account: {
