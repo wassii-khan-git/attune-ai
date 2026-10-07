@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatWait } from './format';
+import { formatBytes, formatDuration, formatWait } from './format';
 
 describe('formatWait', () => {
   it.each([
@@ -14,5 +14,30 @@ describe('formatWait', () => {
     [3601, '2 hours'],
   ])('describes %s seconds as "%s"', (seconds, expected) => {
     expect(formatWait(seconds)).toBe(expected);
+  });
+});
+
+describe('formatDuration', () => {
+  it.each([
+    [0, '0:00'],
+    [7, '0:07'],
+    [42.9, '0:42'],
+    [60, '1:00'],
+    [300, '5:00'],
+    [-3, '0:00'],
+  ])('shows %s seconds as "%s"', (seconds, expected) => {
+    expect(formatDuration(seconds)).toBe(expected);
+  });
+});
+
+describe('formatBytes', () => {
+  it.each([
+    [512, '512 bytes'],
+    [1024, '1 KB'],
+    [168_000, '164 KB'],
+    [1_258_291, '1.2 MB'],
+    [4 * 1024 * 1024, '4 MB'],
+  ])('shows %s bytes as "%s"', (bytes, expected) => {
+    expect(formatBytes(bytes)).toBe(expected);
   });
 });

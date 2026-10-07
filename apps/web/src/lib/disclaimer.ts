@@ -9,4 +9,5 @@ export const DISCLAIMER = {
   body: 'Attune AI is built with HIPAA-style safeguards, but it is not HIPAA compliant and it is not a medical device. Use synthetic data only, and never enter information about a real patient.',
   guest:
     'You are using a guest session. It ends 24 hours after it started, and its data is then deleted.',
+  recording: 'Use invented conversations only. Never record or upload a real patient.',
 } as const;
