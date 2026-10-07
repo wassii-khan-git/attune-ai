@@ -2,6 +2,7 @@
 export const APP_HOME = '/visits';
 
 export const NEW_VISIT = '/visits/new';
+export const SETTINGS = '/settings';
 
 /** The page of one visit. */
 export function visitPath(id: string): string {
