@@ -11,7 +11,25 @@ export type GenerationController = {
   process: (req: Request, res: Response) => Promise<void>;
 };
 
-export function createGenerationController(service: GenerationService): GenerationController {
+/**
+ * How often a blank line is written while a run is in progress.
+ *
+ * Proxies between the client and this server close a connection that stays
+ * silent for too long: the web app's own proxy does so after 30 seconds, and
+ * transcription alone can take longer than that. A line every few seconds
+ * keeps the connection open.
+ */
+const KEEP_ALIVE_MS = 10_000;
+
+export type GenerationControllerOptions = {
+  /** Shortened in tests, which cannot wait ten seconds to see a keep-alive. */
+  keepAliveMs?: number;
+};
+
+export function createGenerationController(
+  service: GenerationService,
+  { keepAliveMs = KEEP_ALIVE_MS }: GenerationControllerOptions = {},
+): GenerationController {
   return {
     process: async (req, res) => {
       const caller = requireAuth(req);
@@ -55,11 +73,21 @@ export function createGenerationController(service: GenerationService): Generati
         })
         .flushHeaders();
 
-      for await (const event of events) {
-        // If the client has gone, the run still finishes so the result is saved for their next visit.
+      // A blank line is not an event, and readers of newline-delimited JSON skip it.
+      const keepAlive = setInterval(() => {
         if (!res.destroyed) {
-          res.write(`${JSON.stringify(event)}\n`);
+          res.write('\n');
         }
+      }, keepAliveMs);
+      try {
+        for await (const event of events) {
+          // If the client has gone, the run still finishes so the result is saved for their next visit.
+          if (!res.destroyed) {
+            res.write(`${JSON.stringify(event)}\n`);
+          }
+        }
+      } finally {
+        clearInterval(keepAlive);
       }
       res.end();
     },

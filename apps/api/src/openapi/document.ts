@@ -250,6 +250,7 @@ export const OPERATIONS: Operation[] = [
       `Recordings are meant to be at most ${String(MAX_RECORDING_SEC / 60)} minutes. The length is reported by the client in \`durationSec\`; the limit the server enforces itself is the file size.`,
       'If the visit already has a note, the request is refused with `NOTE_EXISTS` unless `replaceExisting` is `true`, so an edited note is never overwritten by accident.',
       'The response is newline-delimited JSON: one event per line, ending with exactly one `done` or `error` event. Once the stream has started the status stays 200, so read the last event to know the outcome.',
+      'Blank lines can appear between events. They only keep the connection open while the model is working: skip them.',
     ].join('\n\n'),
     auth: true,
     params: visitIdParamsSchema,

@@ -109,9 +109,9 @@ export default defineConfig(
     rules: { 'no-console': 'off' },
   },
   {
-    // Build-time scripts run by Node directly. They print progress and handle no user data.
-    files: ['apps/api/scripts/**/*.mjs'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+    // Scripts run by Node directly, at build time or by hand. They print progress and handle no user data.
+    files: ['apps/*/scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly' } },
     rules: { 'no-console': 'off' },
   },
 

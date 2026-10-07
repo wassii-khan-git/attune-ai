@@ -67,6 +67,8 @@ export type AppDependencies = {
   scribeModel: ScribeModel;
   /** Pause before a retried model call. Injectable so tests do not wait. */
   sleep?: (ms: number) => Promise<void>;
+  /** Gap between keep-alive lines in a streamed run. Shortened in tests. */
+  streamKeepAliveMs?: number;
   /** False only for local development over plain HTTP. */
   secureCookies: boolean;
   /** Generations allowed per UTC day across all users. */
@@ -93,6 +95,7 @@ export function createApp({
   fieldEncryptionKey,
   scribeModel,
   sleep,
+  streamKeepAliveMs,
   secureCookies,
   dailyGenerationBudget,
   passwordHashCost = DEFAULT_BCRYPT_COST,
@@ -158,6 +161,7 @@ export function createApp({
           now,
           ...(sleep === undefined ? {} : { sleep }),
         }),
+        streamKeepAliveMs === undefined ? {} : { keepAliveMs: streamKeepAliveMs },
       ),
       authenticate: requireUser,
       audioUpload: audioUpload(),
