@@ -1,7 +1,7 @@
-import { apiErrorSchema } from '@attune/shared';
 import type { z } from 'zod';
 
-import { ApiError } from './errors';
+import { invalidResponse, isApiError, networkError, toApiError } from './errors';
+import { uploadStream, type UploadStreamOptions } from './upload-stream';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 type Query = Record<string, string | number | undefined>;
@@ -27,10 +27,17 @@ export type HttpClient = {
   ) => Promise<z.output<S>>;
   /** For endpoints that answer 204 with no body. */
   send: (path: string, options?: RequestOptions) => Promise<void>;
+  /**
+   * Uploads a form with `POST` and hands over the response one line at a time
+   * while it is still arriving. Resolves when the response has ended.
+   */
+  stream: (path: string, options: UploadStreamOptions) => Promise<void>;
 };
 
 export type HttpClientOptions = {
   fetch?: typeof globalThis.fetch;
+  /** Makes the request object for an upload. Replaced in tests, which run outside a browser. */
+  createXhr?: () => XMLHttpRequest;
   /** Tries to renew the session. Resolves to true if the request is worth repeating. */
   onUnauthenticated?: () => Promise<boolean>;
 };
@@ -46,26 +53,9 @@ function buildUrl(path: string, query: Query | undefined): string {
   return search === '' ? path : `${path}?${search}`;
 }
 
-async function toApiError(response: Response): Promise<ApiError> {
+async function refusal(response: Response): Promise<Error> {
   const body: unknown = await response.json().catch(() => undefined);
-  const parsed = apiErrorSchema.safeParse(body);
-  if (!parsed.success) {
-    return new ApiError(
-      response.status,
-      'INVALID_RESPONSE',
-      'The server sent an unexpected response.',
-    );
-  }
-
-  const retryAfter = Number(response.headers.get('Retry-After'));
-  const { code, message, details } = parsed.data.error;
-  return new ApiError(
-    response.status,
-    code,
-    message,
-    details,
-    Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
-  );
+  return toApiError(response.status, body, response.headers.get('Retry-After'));
 }
 
 /**
@@ -78,6 +68,7 @@ async function toApiError(response: Response): Promise<ApiError> {
  */
 export function createHttpClient({
   fetch = globalThis.fetch,
+  createXhr = () => new XMLHttpRequest(),
   onUnauthenticated,
 }: HttpClientOptions = {}): HttpClient {
   async function perform(
@@ -102,11 +93,7 @@ export function createHttpClient({
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
-      throw new ApiError(
-        0,
-        'NETWORK_ERROR',
-        'Could not reach the server. Check your connection and try again.',
-      );
+      throw networkError();
     }
 
     const canRetry = response.status === 401 && retryOnUnauthenticated && !isRetry;
@@ -114,7 +101,7 @@ export function createHttpClient({
       return perform(path, options, true);
     }
     if (!response.ok) {
-      throw await toApiError(response);
+      throw await refusal(response);
     }
     return response;
   }
@@ -125,17 +112,26 @@ export function createHttpClient({
       const body: unknown = await response.json().catch(() => undefined);
       const parsed = schema.safeParse(body);
       if (!parsed.success) {
-        throw new ApiError(
-          response.status,
-          'INVALID_RESPONSE',
-          'The server sent an unexpected response.',
-        );
+        throw invalidResponse(response.status);
       }
       return parsed.data;
     },
 
     send: async (path, options = {}) => {
       await perform(path, options, false);
+    },
+
+    stream: async (path, options) => {
+      try {
+        await uploadStream(createXhr(), path, options);
+      } catch (error) {
+        // An expired session is refused before any line is sent, so the upload can simply be repeated.
+        const expired = isApiError(error) && error.status === 401;
+        if (!expired || onUnauthenticated === undefined || !(await onUnauthenticated())) {
+          throw error;
+        }
+        await uploadStream(createXhr(), path, options);
+      }
     },
   };
 }

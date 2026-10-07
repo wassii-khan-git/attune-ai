@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { ApiError } from './errors';
 import { createHttpClient } from './http';
+import { FakeXhr, fakeXhrFactory } from './testing';
 
 const schema = z.object({ id: z.string() });
 
@@ -207,6 +208,67 @@ describe('http client and an expired session', () => {
     );
 
     expect(error.code).toBe('INVALID_CREDENTIALS');
+    expect(onUnauthenticated).not.toHaveBeenCalled();
+  });
+});
+
+describe('http client and a streamed upload', () => {
+  const refuse = (xhr: FakeXhr) => {
+    xhr.respond(401);
+    xhr.receive('{"error":{"code":"UNAUTHENTICATED","message":"Sign in to continue."}}');
+    xhr.end();
+  };
+
+  it('renews an expired session once and uploads again', async () => {
+    const first = new FakeXhr();
+    const second = new FakeXhr();
+    const onUnauthenticated = vi.fn(() => Promise.resolve(true));
+    const onLine = vi.fn();
+    const body = new FormData();
+
+    const finished = createHttpClient({
+      createXhr: fakeXhrFactory(first, second),
+      onUnauthenticated,
+    }).stream('/v1/x', { body, onLine });
+
+    refuse(first);
+    await vi.waitFor(() => {
+      expect(second.body).toBe(body);
+    });
+    second.respond(200);
+    second.receive('{"type":"done"}\n');
+    second.end();
+    await finished;
+
+    expect(onUnauthenticated).toHaveBeenCalledTimes(1);
+    expect(onLine).toHaveBeenCalledExactlyOnceWith({ type: 'done' });
+  });
+
+  it('gives up when the session cannot be renewed', async () => {
+    const xhr = new FakeXhr();
+    const finished = createHttpClient({
+      createXhr: fakeXhrFactory(xhr),
+      onUnauthenticated: () => Promise.resolve(false),
+    }).stream('/v1/x', { body: new FormData(), onLine: vi.fn() });
+
+    refuse(xhr);
+
+    expect(await failure(finished)).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+
+  it('does not renew the session for any other refusal', async () => {
+    const xhr = new FakeXhr();
+    const onUnauthenticated = vi.fn(() => Promise.resolve(true));
+    const finished = createHttpClient({
+      createXhr: fakeXhrFactory(xhr),
+      onUnauthenticated,
+    }).stream('/v1/x', { body: new FormData(), onLine: vi.fn() });
+
+    xhr.respond(409);
+    xhr.receive('{"error":{"code":"NOTE_EXISTS","message":"This visit already has a note."}}');
+    xhr.end();
+
+    expect(await failure(finished)).toMatchObject({ status: 409, code: 'NOTE_EXISTS' });
     expect(onUnauthenticated).not.toHaveBeenCalled();
   });
 });
