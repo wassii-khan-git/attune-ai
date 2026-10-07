@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /** The most text one section of a note may hold. */
 export const NOTE_SECTION_MAX_LENGTH = 10_000;

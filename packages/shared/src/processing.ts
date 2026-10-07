@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 import { errorCodeSchema } from './errors.js';
 import { soapNoteSchema, transcriptSchema, visitDetailSchema } from './visits.js';

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 /** `GET /health`: the process is up and able to answer requests. */
 export const livenessResponseSchema = z.object({
