@@ -1,19 +1,24 @@
 'use client';
 
 import { FileAudio, Mic, Upload, type LucideIcon } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/features/auth/form-fields';
 import { DISCLAIMER } from '@/lib/disclaimer';
+import { visitPath } from '@/lib/navigation';
 
 import { AudioPreview } from './audio-preview';
 import { FilePicker } from './file-picker';
+import { visitPageFor } from './process-run';
+import { useProcessRun } from './process-run-provider';
 import { RecorderPanel } from './recorder-panel';
 import { RunProgress } from './run-progress';
 import { SamplePicker } from './sample-picker';
 import { audioFromRecording, type SelectedAudio } from './selected-audio';
-import { useProcessRun } from './use-process-run';
 import { useRecorder } from './use-recorder';
 import {
   CONSENT_REQUIRED,
@@ -37,9 +42,14 @@ const SOURCES: readonly { value: Source; label: string; icon: LucideIcon }[] = [
  *
  * Consent comes first on purpose. The record button will not start without
  * it, and the API refuses to process a visit that has none.
+ *
+ * The form stays on screen while the recording uploads, so that cancelling or
+ * a refusal brings it back as it was. Once the API starts answering, the
+ * browser moves to the visit's own page, which shows the result arriving.
  */
 export function NewVisitForm() {
-  const run = useProcessRun();
+  const { state: runState, start, retry, abandon, clear } = useProcessRun();
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const consentRef = useRef<HTMLInputElement>(null);
   const focusFirstError = useRef(false);
@@ -51,6 +61,8 @@ export function NewVisitForm() {
   // Until the user types a title, each newly chosen audio may suggest one.
   const [titleEdited, setTitleEdited] = useState(false);
   const [errors, setErrors] = useState<NewVisitErrors>({});
+  // The run outlives this page, so one may be left over from an earlier visit to it.
+  const [startedHere, setStartedHere] = useState(false);
 
   const clearError = (field: NewVisitField): void => {
     setErrors(({ [field]: _cleared, ...rest }) => rest);
@@ -90,9 +102,7 @@ export function NewVisitForm() {
   }, [errors]);
 
   // Audio that has not been uploaded exists only in this tab: warn before a reload or a closed tab loses it.
-  const unsaved =
-    run.state.phase === 'running' ||
-    (run.state.phase !== 'done' && (audio !== null || recorderBusy));
+  const unsaved = audio !== null || recorderBusy;
   useEffect(() => {
     if (!unsaved) {
       return;
@@ -106,6 +116,26 @@ export function NewVisitForm() {
     };
   }, [unsaved]);
 
+  const destination = startedHere ? visitPageFor(runState) : null;
+  useEffect(() => {
+    if (destination !== null) {
+      router.replace(destination);
+    }
+  }, [destination, router]);
+
+  // Tidy up a run this page did not start. A finished one is simply forgotten.
+  // One that failed before the upload got through left an empty visit behind, which is removed.
+  useEffect(() => {
+    if (startedHere) {
+      return;
+    }
+    if (runState.phase === 'failed' && runState.step === 'uploading') {
+      abandon();
+    } else if (runState.phase === 'failed' || runState.phase === 'done') {
+      clear();
+    }
+  }, [startedHere, runState, abandon, clear]);
+
   const handleSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const checked = validateNewVisit({ consent, audio, title, recording: recorderBusy });
@@ -116,27 +146,40 @@ export function NewVisitForm() {
     }
     setErrors({});
     setTitle(checked.data.title);
-    run.start(checked.data);
+    setStartedHere(true);
+    start(checked.data);
   };
 
-  const startAnother = (): void => {
-    run.reset();
-    setConsent(false);
-    setAudio(null);
-    setTitle('');
-    setTitleEdited(false);
-    setErrors({});
-  };
-
-  if (run.state.phase !== 'idle') {
+  if (startedHere && runState.phase !== 'idle') {
     return (
       <RunProgress
-        state={run.state}
-        title={title}
-        onRetry={run.retry}
-        onBack={run.reset}
-        onAnother={startAnother}
+        state={runState}
+        onRetry={retry}
+        onBack={() => {
+          abandon();
+          setStartedHere(false);
+        }}
       />
+    );
+  }
+
+  // One run at a time: a note is still being made for a visit started earlier.
+  if (runState.phase === 'running') {
+    return (
+      <Alert>
+        <AlertTitle>A note is still being created</AlertTitle>
+        <AlertDescription>
+          <p>
+            “{runState.title}” is being processed. You can start a new visit as soon as it has
+            finished.
+          </p>
+          {runState.visitId !== null && (
+            <p>
+              <Link href={visitPath(runState.visitId)}>Open that visit</Link>
+            </p>
+          )}
+        </AlertDescription>
+      </Alert>
     );
   }
 
