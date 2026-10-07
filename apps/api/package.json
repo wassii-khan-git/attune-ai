@@ -17,6 +17,7 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "eval": "tsx --env-file-if-exists=.env eval/run.ts",
+    "e2e:server": "tsx src/testing/e2e-server.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "migrate:production": "node scripts/migrate-on-production.mjs"
