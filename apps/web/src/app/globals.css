@@ -63,7 +63,8 @@
 
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Timers and sizes only: the system's own monospace font, so that no second web font is downloaded. */
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --font-heading: var(--font-sans);
 
   --color-background: var(--background);
@@ -139,5 +140,17 @@
     --foreground: black;
     --muted-foreground: oklch(0.4 0 0);
     --border: oklch(0.8 0 0);
+  }
+}
+
+/* Someone who has asked their system for less motion gets still spinners and placeholders. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

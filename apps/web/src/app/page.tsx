@@ -71,7 +71,8 @@ export default function LandingPage() {
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5">
         <Brand />
-        <nav aria-label="Account" className="flex items-center gap-1">
+        {/* As tall as the link that appears once the session is known, so nothing below moves. */}
+        <nav aria-label="Account" className="flex min-h-9 items-center gap-1">
           <AuthNav />
           <ThemeToggle />
         </nav>

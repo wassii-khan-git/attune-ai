@@ -1,11 +1,9 @@
-import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 
 import { Providers } from '@/components/providers';
-import { cn } from '@/lib/utils';
 import { NONCE_HEADER } from '@/proxy';
 
 import './globals.css';
@@ -29,7 +27,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   return (
     // next-themes sets the theme class before React hydrates, so the attribute differs by design.
-    <html lang="en" className={cn(GeistSans.variable, GeistMono.variable)} suppressHydrationWarning>
+    <html lang="en" className={GeistSans.variable} suppressHydrationWarning>
       <body className="min-h-dvh">
         <a
           href="#main"

@@ -37,9 +37,19 @@ test('a guest turns a sample consultation into a note, edits it, finds it again 
     await page.getByText('Sample', { exact: true }).click();
     await page.getByRole('button', { name: `Use the sample: ${VISIT_TITLE}` }).click();
     await expect(page.getByLabel('Visit title')).toHaveValue(VISIT_TITLE);
+    // The button that was pressed is gone; the focus moved to what replaced it.
+    await expect(page.getByRole('group', { name: `Selected audio: ${VISIT_TITLE}` })).toBeFocused();
 
     await page.getByRole('button', { name: 'Create note' }).click();
     await expect(page.getByText('Confirm consent before you continue.')).toBeVisible();
+  });
+
+  await test.step('leaving with audio that was never uploaded asks first', async () => {
+    page.once('dialog', (dialog) => void dialog.dismiss());
+    await mainNav.getByRole('link', { name: 'Visits' }).click();
+
+    await expect(page).toHaveURL(/\/visits\/new$/);
+    await expect(page.getByLabel('Visit title')).toHaveValue(VISIT_TITLE);
   });
 
   await test.step('with consent, the transcript and the note arrive on the visit page', async () => {
