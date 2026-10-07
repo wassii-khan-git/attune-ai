@@ -6,6 +6,7 @@ import { SiteFooter } from '@/components/site-footer';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { AccountDeletedNotice } from '@/features/auth/account-deleted-notice';
 import { AuthNav } from '@/features/auth/auth-nav';
 import { HeroActions } from '@/features/auth/hero-actions';
 import { DISCLAIMER } from '@/lib/disclaimer';
@@ -79,6 +80,7 @@ export default function LandingPage() {
       <main id="main" className="flex-1">
         <section className="mx-auto max-w-5xl px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
           <div className="max-w-2xl space-y-8">
+            <AccountDeletedNotice />
             <Badge variant="secondary">Demo · synthetic data only</Badge>
             <div className="space-y-5">
               <h1 className="text-4xl font-semibold sm:text-5xl">

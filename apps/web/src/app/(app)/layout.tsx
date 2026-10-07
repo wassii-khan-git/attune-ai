@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { AppNav } from '@/components/app-nav';
 import { Brand } from '@/components/brand';
 import { SiteFooter } from '@/components/site-footer';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -16,7 +17,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="flex min-h-dvh flex-col">
         <header className="border-b print:hidden">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
-            <Brand href={APP_HOME} />
+            <div className="flex items-center gap-2 sm:gap-6">
+              <Brand href={APP_HOME} />
+              <AppNav />
+            </div>
             <div className="flex items-center gap-1">
               <UserMenu />
               <ThemeToggle />
