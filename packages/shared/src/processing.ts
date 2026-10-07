@@ -33,6 +33,9 @@ export type ProcessStage = z.infer<typeof processStageSchema>;
 /**
  * `POST /v1/visits/:id/process` answers with newline-delimited JSON, one of
  * these events per line. A run always ends with exactly one `done` or `error`.
+ *
+ * Blank lines can appear between events. They keep the connection open while
+ * the model is working and carry no meaning: skip them.
  */
 export const processEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('stage'), stage: processStageSchema }),
