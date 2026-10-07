@@ -1,11 +1,11 @@
 'use client';
 
 import { ClipboardList, Settings, type LucideIcon } from 'lucide-react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { buttonVariants } from '@/components/ui/button';
 import { APP_HOME, SETTINGS } from '@/lib/navigation';
+import { GuardedLink } from '@/lib/navigation-guard';
 import { cn } from '@/lib/utils';
 
 const LINKS: readonly { href: string; label: string; icon: LucideIcon }[] = [
@@ -25,7 +25,7 @@ export function AppNav() {
       {LINKS.map(({ href, label, icon: Icon }) => {
         const current = pathname === href || pathname.startsWith(`${href}/`);
         return (
-          <Link
+          <GuardedLink
             key={href}
             href={href}
             aria-current={current ? 'page' : undefined}
@@ -36,7 +36,7 @@ export function AppNav() {
           >
             <Icon aria-hidden className="sm:hidden" />
             <span className="sr-only sm:not-sr-only">{label}</span>
-          </Link>
+          </GuardedLink>
         );
       })}
     </nav>

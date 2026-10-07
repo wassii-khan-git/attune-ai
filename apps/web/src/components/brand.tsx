@@ -1,11 +1,10 @@
-import Link from 'next/link';
-
+import { GuardedLink } from '@/lib/navigation-guard';
 import { cn } from '@/lib/utils';
 
 /** The product mark and name, as a link. */
 export function Brand({ href = '/', className }: { href?: string; className?: string }) {
   return (
-    <Link
+    <GuardedLink
       href={href}
       className={cn(
         'inline-flex items-center gap-2.5 rounded-md text-lg font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
@@ -24,6 +23,6 @@ export function Brand({ href = '/', className }: { href?: string; className?: st
         />
       </svg>
       Attune AI
-    </Link>
+    </GuardedLink>
   );
 }

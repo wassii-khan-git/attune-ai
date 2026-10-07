@@ -34,17 +34,25 @@ export function ConfirmAction({
   onConfirm,
 }: ConfirmActionProps) {
   const [asking, setAsking] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const wasAsking = useRef(false);
 
+  // The buttons replace each other, so the focus is moved by hand: to "Cancel"
+  // when the question appears, and back to where it came from when it is withdrawn.
   useEffect(() => {
     if (asking) {
       cancelRef.current?.focus();
+    } else if (wasAsking.current) {
+      triggerRef.current?.focus();
     }
+    wasAsking.current = asking;
   }, [asking]);
 
   if (!asking) {
     return (
       <Button
+        ref={triggerRef}
         type="button"
         variant="destructive"
         className="h-10 px-4"

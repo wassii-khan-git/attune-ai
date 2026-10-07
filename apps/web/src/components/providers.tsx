@@ -4,6 +4,7 @@ import { ThemeProvider } from 'next-themes';
 import type { ReactNode } from 'react';
 
 import { AuthProvider } from '@/features/auth/auth-provider';
+import { NavigationGuardProvider } from '@/lib/navigation-guard';
 
 type ProvidersProps = {
   children: ReactNode;
@@ -20,7 +21,9 @@ export function Providers({ children, nonce }: ProvidersProps) {
       disableTransitionOnChange
       {...(nonce === undefined ? {} : { nonce })}
     >
-      <AuthProvider>{children}</AuthProvider>
+      <NavigationGuardProvider>
+        <AuthProvider>{children}</AuthProvider>
+      </NavigationGuardProvider>
     </ThemeProvider>
   );
 }
