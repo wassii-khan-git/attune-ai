@@ -56,6 +56,8 @@ export default defineConfig(
     '**/src/generated/**',
     '**/.next/**',
     '**/next-env.d.ts',
+    '**/test-results/**',
+    '**/playwright-report/**',
   ]),
 
   eslint.configs.recommended,

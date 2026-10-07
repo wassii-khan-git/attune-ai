@@ -24,3 +24,7 @@ apps/api/src/generated/
 
 # Next.js
 next-env.d.ts
+
+# Playwright
+test-results/
+playwright-report/
