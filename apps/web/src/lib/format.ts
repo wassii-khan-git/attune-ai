@@ -29,3 +29,10 @@ export function formatBytes(bytes: number): string {
   // One decimal place, without a trailing ".0".
   return `${String(Number((kilobytes / 1024).toFixed(1)))} MB`;
 }
+
+/** A moment as a date and a time of day, in the reader's own format, such as `7 Oct 2026, 14:30`. */
+export function formatDateTime(iso: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(iso),
+  );
+}

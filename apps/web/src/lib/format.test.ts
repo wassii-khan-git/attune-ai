@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDuration, formatWait } from './format';
+import { formatBytes, formatDateTime, formatDuration, formatWait } from './format';
 
 describe('formatWait', () => {
   it.each([
@@ -39,5 +39,14 @@ describe('formatBytes', () => {
     [4 * 1024 * 1024, '4 MB'],
   ])('shows %s bytes as "%s"', (bytes, expected) => {
     expect(formatBytes(bytes)).toBe(expected);
+  });
+});
+
+describe('formatDateTime', () => {
+  it('shows the date and the time of day in the given locale', () => {
+    const text = formatDateTime('2026-10-07T14:30:00', 'en-GB');
+
+    expect(text).toContain('7 Oct 2026');
+    expect(text).toContain('14:30');
   });
 });

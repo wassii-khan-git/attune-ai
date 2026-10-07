@@ -1,6 +1,13 @@
 /** Where a signed-in user lands when no destination was asked for. */
 export const APP_HOME = '/visits';
 
+export const NEW_VISIT = '/visits/new';
+
+/** The page of one visit. */
+export function visitPath(id: string): string {
+  return `/visits/${encodeURIComponent(id)}`;
+}
+
 /** True for tabs, newlines and the like, which some browsers drop from a URL before using it. */
 function hasControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index++) {
