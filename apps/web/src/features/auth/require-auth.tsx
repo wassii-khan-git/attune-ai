@@ -9,7 +9,8 @@ import { useAuth } from './auth-provider';
 
 /**
  * Shows its children only to a signed-in user. A visitor is sent to the
- * sign-in page with a way back; someone who has just signed out goes home.
+ * sign-in page with a way back; someone who has just signed out, or deleted
+ * their account, goes home.
  *
  * This is for the user's convenience, not for protection: the API refuses
  * every request that lacks a valid session, whatever the page shows.
@@ -23,9 +24,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     if (state.status !== 'anonymous') {
       return;
     }
-    router.replace(
-      state.reason === 'signed-out' ? '/' : `/login?next=${encodeURIComponent(pathname)}`,
-    );
+    const leftOnPurpose = state.reason === 'signed-out' || state.reason === 'deleted';
+    router.replace(leftOnPurpose ? '/' : `/login?next=${encodeURIComponent(pathname)}`);
   }, [state, pathname, router]);
 
   if (state.status !== 'authenticated') {

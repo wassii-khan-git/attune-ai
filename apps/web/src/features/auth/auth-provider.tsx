@@ -26,8 +26,9 @@ const REFRESH_AHEAD_MS = 60_000;
  * - `idle`: 15 minutes passed without input.
  * - `expired`: the session could not be renewed.
  * - `signed-out`: the user signed out, here or in another tab.
+ * - `deleted`: the user deleted their account.
  */
-export type SignedOutReason = 'idle' | 'expired' | 'signed-out';
+export type SignedOutReason = 'idle' | 'expired' | 'signed-out' | 'deleted';
 
 export type AuthState =
   /** The first check of an existing session has not finished. */
@@ -43,6 +44,8 @@ export type AuthContextValue = {
   register: (input: RegisterRequest) => Promise<void>;
   continueAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
+  /** Deletes the account and everything in it, then ends the session. Rejects if the API refuses. */
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -159,6 +162,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [getSession],
   );
 
+  const deleteAccount = useCallback(async (): Promise<void> => {
+    const { api, store } = getSession();
+    // If this fails, nothing has changed and the user stays signed in.
+    await api.account.remove();
+    store.clear();
+    setState({ status: 'anonymous', reason: 'deleted' });
+  }, [getSession]);
+
   // While signed in: watch for inactivity, follow a sign-out in another tab, renew before expiry.
   useEffect(() => {
     if (!signedIn) {
@@ -219,8 +230,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register: (input) => begin((api) => api.auth.register(input)),
       continueAsGuest: () => begin((api) => api.auth.guest()),
       logout: () => endSession('signed-out'),
+      deleteAccount,
     };
-  }, [state, getSession, endSession]);
+  }, [state, getSession, endSession, deleteAccount]);
 
   return <AuthContext value={value}>{children}</AuthContext>;
 }
