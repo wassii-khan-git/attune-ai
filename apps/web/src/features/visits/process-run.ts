@@ -1,8 +1,15 @@
-import { MAX_AUDIO_BYTES, type ErrorCode, type ProcessEvent } from '@attune/shared';
+import {
+  MAX_AUDIO_BYTES,
+  type ErrorCode,
+  type ProcessEvent,
+  type Transcript,
+  type VisitDetail,
+} from '@attune/shared';
 
 import { isApiError, type ClientErrorCode } from '@/lib/api/errors';
 import { AUDIO_FORMATS } from '@/lib/audio/audio-file';
 import { formatBytes, formatWait } from '@/lib/format';
+import { visitPath } from '@/lib/navigation';
 
 /** The stages a run goes through, in order. Creating the visit is part of the first. */
 export type RunStep = 'uploading' | 'transcribing' | 'drafting';
@@ -13,21 +20,39 @@ export type RunFailure = {
   canRetry: boolean;
 };
 
+/** A note that is still being written: whichever sections exist so far. */
+export type NoteDraft = Extract<ProcessEvent, { type: 'note' }>['note'];
+
+/** Which visit a run is for, and what to call it while the visit itself has not been loaded. */
+type RunSubject = {
+  /** Null until the visit has been created. */
+  visitId: string | null;
+  title: string;
+};
+
 export type RunState =
   | { phase: 'idle' }
-  | {
+  | ({
       phase: 'running';
       step: RunStep;
       /** Share of the recording sent so far, from 0 to 1. */
       uploadFraction: number;
-      /** Number of speaker turns in the transcript, once it exists. */
-      turns: number | null;
+      /** The transcript, once the first model call has returned it. */
+      transcript: Transcript | null;
+      /** The note as far as it has been written. Each event replaces it. */
+      note: NoteDraft;
+    } & RunSubject)
+  | {
+      phase: 'done';
+      visitId: string;
+      /** The finished visit. Null when an earlier attempt produced it and it has to be loaded. */
+      visit: VisitDetail | null;
     }
-  | { phase: 'done'; turns: number | null }
-  | { phase: 'failed'; step: RunStep; failure: RunFailure };
+  | ({ phase: 'failed'; step: RunStep; failure: RunFailure } & RunSubject);
 
 export type RunAction =
-  | { type: 'started' }
+  | ({ type: 'started' } & RunSubject)
+  | { type: 'visit-created'; visitId: string }
   | { type: 'upload-progress'; fraction: number }
   | { type: 'event'; event: ProcessEvent }
   /** The API says the visit already has its note: an earlier attempt finished after all. */
@@ -153,15 +178,23 @@ function clamp(fraction: number): number {
 }
 
 /**
- * Follows one run from the first click to its result. Everything the progress
- * display shows is derived from this state.
+ * Follows one run from the first click to its result. Everything the pages
+ * show about a run is derived from this state.
  *
  * Progress and events only count while a run is in flight, so a late callback
  * from a cancelled request cannot bring a finished or reset run back to life.
  */
 export function reduceRun(state: RunState, action: RunAction): RunState {
   if (action.type === 'started') {
-    return { phase: 'running', step: 'uploading', uploadFraction: 0, turns: null };
+    return {
+      phase: 'running',
+      step: 'uploading',
+      uploadFraction: 0,
+      transcript: null,
+      note: {},
+      visitId: action.visitId,
+      title: action.title,
+    };
   }
   if (action.type === 'reset') {
     return IDLE;
@@ -170,15 +203,18 @@ export function reduceRun(state: RunState, action: RunAction): RunState {
     return state;
   }
 
+  const { visitId, title } = state;
   switch (action.type) {
+    case 'visit-created':
+      return { ...state, visitId: action.visitId };
     case 'upload-progress':
       return state.step === 'uploading'
         ? { ...state, uploadFraction: clamp(action.fraction) }
         : state;
     case 'finished-earlier':
-      return { phase: 'done', turns: null };
+      return visitId === null ? state : { phase: 'done', visitId, visit: null };
     case 'failed':
-      return { phase: 'failed', step: state.step, failure: action.failure };
+      return { phase: 'failed', step: state.step, failure: action.failure, visitId, title };
     case 'event':
       break;
   }
@@ -188,13 +224,43 @@ export function reduceRun(state: RunState, action: RunAction): RunState {
     case 'stage':
       return { ...state, step: event.stage, uploadFraction: 1 };
     case 'transcript':
-      return { ...state, turns: event.transcript.length };
+      return { ...state, transcript: event.transcript };
     case 'note':
-      // The draft itself is shown on the visit's own page, not in the progress display.
-      return state;
+      return { ...state, note: event.note };
     case 'done':
-      return { phase: 'done', turns: event.visit.transcript?.length ?? state.turns };
+      return { phase: 'done', visitId: event.visit.id, visit: event.visit };
     case 'error':
-      return { phase: 'failed', step: state.step, failure: describeEventError(event.error) };
+      return {
+        phase: 'failed',
+        step: state.step,
+        failure: describeEventError(event.error),
+        visitId,
+        title,
+      };
   }
+}
+
+/** The number of speaker turns transcribed so far, or null before the transcript exists. */
+export function transcribedTurns(state: RunState): number | null {
+  if (state.phase === 'running') {
+    return state.transcript?.length ?? null;
+  }
+  if (state.phase === 'done') {
+    return state.visit?.transcript?.length ?? null;
+  }
+  return null;
+}
+
+/**
+ * The page that shows a run once the API has started answering, or null while
+ * the form still does: during the upload, and after a failure.
+ */
+export function visitPageFor(state: RunState): string | null {
+  if (state.phase === 'done') {
+    return visitPath(state.visitId);
+  }
+  if (state.phase === 'running' && state.step !== 'uploading' && state.visitId !== null) {
+    return visitPath(state.visitId);
+  }
+  return null;
 }

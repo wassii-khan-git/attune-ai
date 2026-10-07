@@ -10,13 +10,18 @@ import {
   reduceRun,
   RUN_STEPS,
   stepStatus,
+  transcribedTurns,
+  visitPageFor,
   type RunAction,
   type RunState,
 } from './process-run';
 
+const VISIT_ID = '2f1c7c1e-6a54-4b6f-9d1e-0c9f5a3b7e21';
+const TITLE = 'Sore throat and cough';
+
 const visit: VisitDetail = {
-  id: '2f1c7c1e-6a54-4b6f-9d1e-0c9f5a3b7e21',
-  title: 'Sore throat and cough',
+  id: VISIT_ID,
+  title: TITLE,
   status: 'READY',
   consentAt: '2026-10-07T12:00:00.000Z',
   durationSec: 38,
@@ -29,6 +34,8 @@ const visit: VisitDetail = {
   note: { subjective: 'a', objective: 'b', assessment: 'c', plan: 'd' },
 };
 
+const started: RunAction = { type: 'started', title: TITLE, visitId: null };
+const created: RunAction = { type: 'visit-created', visitId: VISIT_ID };
 const event = (value: ProcessEvent): RunAction => ({ type: 'event', event: value });
 
 function play(...actions: RunAction[]): RunState {
@@ -36,47 +43,81 @@ function play(...actions: RunAction[]): RunState {
 }
 
 describe('reduceRun', () => {
-  it('starts by uploading, at zero', () => {
-    expect(play({ type: 'started' })).toEqual({
+  it('starts by uploading, at zero, before the visit exists', () => {
+    expect(play(started)).toEqual({
       phase: 'running',
       step: 'uploading',
       uploadFraction: 0,
-      turns: null,
+      transcript: null,
+      note: {},
+      visitId: null,
+      title: TITLE,
     });
   });
 
+  it('learns which visit the run is for once it has been created', () => {
+    expect(play(started, created)).toMatchObject({ phase: 'running', visitId: VISIT_ID });
+  });
+
+  it('keeps the visit when the same recording is sent again', () => {
+    const retried = play(
+      started,
+      created,
+      { type: 'failed', failure: describeInterruption() },
+      {
+        type: 'started',
+        title: TITLE,
+        visitId: VISIT_ID,
+      },
+    );
+
+    expect(retried).toMatchObject({ phase: 'running', step: 'uploading', visitId: VISIT_ID });
+  });
+
   it('follows the upload, keeping the share between 0 and 1', () => {
-    const at = (fraction: number) =>
-      play({ type: 'started' }, { type: 'upload-progress', fraction });
+    const at = (fraction: number) => play(started, { type: 'upload-progress', fraction });
 
     expect(at(0.4)).toMatchObject({ step: 'uploading', uploadFraction: 0.4 });
     expect(at(1.7)).toMatchObject({ uploadFraction: 1 });
     expect(at(-1)).toMatchObject({ uploadFraction: 0 });
   });
 
-  it('moves through transcribing and drafting to done', () => {
+  it('collects the transcript and the growing note, then ends with the finished visit', () => {
     const transcribing = play(
-      { type: 'started' },
+      started,
+      created,
       { type: 'upload-progress', fraction: 0.9 },
       event({ type: 'stage', stage: 'transcribing' }),
     );
-    expect(transcribing).toMatchObject({ step: 'transcribing', uploadFraction: 1, turns: null });
+    expect(transcribing).toMatchObject({
+      step: 'transcribing',
+      uploadFraction: 1,
+      transcript: null,
+    });
 
     const drafting = [
       event({ type: 'transcript', transcript: visit.transcript ?? [] }),
       event({ type: 'stage', stage: 'drafting' }),
-      event({ type: 'note', note: { subjective: 'Sore throat.' } }),
+      event({ type: 'note', note: { subjective: 'Sore' } }),
+      event({ type: 'note', note: { subjective: 'Sore throat.', objective: 'Red' } }),
     ].reduce(reduceRun, transcribing);
-    expect(drafting).toMatchObject({ phase: 'running', step: 'drafting', turns: 2 });
+    expect(drafting).toMatchObject({
+      phase: 'running',
+      step: 'drafting',
+      transcript: visit.transcript,
+      // Each snapshot replaces the one before it.
+      note: { subjective: 'Sore throat.', objective: 'Red' },
+    });
 
     expect(reduceRun(drafting, event({ type: 'done', visit }))).toEqual({
       phase: 'done',
-      turns: 2,
+      visitId: VISIT_ID,
+      visit,
     });
   });
 
   it('ignores upload progress that arrives after the upload step', () => {
-    const state = play({ type: 'started' }, event({ type: 'stage', stage: 'transcribing' }), {
+    const state = play(started, event({ type: 'stage', stage: 'transcribing' }), {
       type: 'upload-progress',
       fraction: 0.2,
     });
@@ -84,55 +125,55 @@ describe('reduceRun', () => {
     expect(state).toMatchObject({ step: 'transcribing', uploadFraction: 1 });
   });
 
-  it('records the step a run failed at, from an error event', () => {
+  it('records the step a run failed at, and keeps nothing of the partial result', () => {
     const state = play(
-      { type: 'started' },
+      started,
+      created,
       event({ type: 'stage', stage: 'transcribing' }),
       event({ type: 'error', error: { code: 'NO_SPEECH_DETECTED', message: 'No speech.' } }),
     );
 
-    expect(state).toMatchObject({ phase: 'failed', step: 'transcribing' });
-    expect(state.phase === 'failed' ? state.failure : null).toEqual({
-      message:
-        'No speech was found in this recording. Check the microphone, or choose different audio.',
-      canRetry: false,
+    expect(state).toEqual({
+      phase: 'failed',
+      step: 'transcribing',
+      visitId: VISIT_ID,
+      title: TITLE,
+      failure: {
+        message:
+          'No speech was found in this recording. Check the microphone, or choose different audio.',
+        canRetry: false,
+      },
     });
   });
 
   it('records a failure that was thrown, such as a refusal', () => {
     const failure = { message: 'Limit reached.', canRetry: false };
 
-    expect(play({ type: 'started' }, { type: 'failed', failure })).toEqual({
+    expect(play(started, { type: 'failed', failure })).toEqual({
       phase: 'failed',
       step: 'uploading',
+      visitId: null,
+      title: TITLE,
       failure,
     });
   });
 
-  it('treats a visit that already has its note as done', () => {
-    expect(play({ type: 'started' }, { type: 'finished-earlier' })).toEqual({
+  it('treats a visit that already has its note as done, with the visit still to be loaded', () => {
+    expect(play(started, created, { type: 'finished-earlier' })).toEqual({
       phase: 'done',
-      turns: null,
+      visitId: VISIT_ID,
+      visit: null,
     });
   });
 
   it('ignores late events once a run has been reset, failed or finished', () => {
     const late = event({ type: 'stage', stage: 'drafting' });
-    const failed = play({ type: 'started' }, { type: 'failed', failure: describeInterruption() });
-    const done = play({ type: 'started' }, event({ type: 'done', visit }));
+    const failed = play(started, { type: 'failed', failure: describeInterruption() });
+    const done = play(started, event({ type: 'done', visit }));
 
-    expect(play({ type: 'started' }, { type: 'reset' }, late)).toEqual(IDLE);
+    expect(play(started, { type: 'reset' }, late)).toEqual(IDLE);
     expect(reduceRun(failed, late)).toBe(failed);
     expect(reduceRun(done, { type: 'upload-progress', fraction: 0.5 })).toBe(done);
-  });
-
-  it('starts over from any state', () => {
-    const failed = play({ type: 'started' }, { type: 'failed', failure: describeInterruption() });
-
-    expect(reduceRun(failed, { type: 'started' })).toMatchObject({
-      phase: 'running',
-      step: 'uploading',
-    });
   });
 });
 
@@ -140,14 +181,14 @@ describe('stepStatus', () => {
   const statuses = (state: RunState) => RUN_STEPS.map((step) => stepStatus(state, step));
 
   it('marks the steps before the current one complete and those after it waiting', () => {
-    const transcribing = play({ type: 'started' }, event({ type: 'stage', stage: 'transcribing' }));
+    const transcribing = play(started, event({ type: 'stage', stage: 'transcribing' }));
 
-    expect(statuses(play({ type: 'started' }))).toEqual(['active', 'waiting', 'waiting']);
+    expect(statuses(play(started))).toEqual(['active', 'waiting', 'waiting']);
     expect(statuses(transcribing)).toEqual(['complete', 'active', 'waiting']);
   });
 
   it('marks the step a run failed at', () => {
-    const failed = play({ type: 'started' }, event({ type: 'stage', stage: 'transcribing' }), {
+    const failed = play(started, event({ type: 'stage', stage: 'transcribing' }), {
       type: 'failed',
       failure: describeInterruption(),
     });
@@ -156,12 +197,48 @@ describe('stepStatus', () => {
   });
 
   it('marks every step complete when the run is done, and none before it starts', () => {
-    expect(statuses(play({ type: 'started' }, { type: 'finished-earlier' }))).toEqual([
+    expect(statuses(play(started, event({ type: 'done', visit })))).toEqual([
       'complete',
       'complete',
       'complete',
     ]);
     expect(statuses(IDLE)).toEqual(['waiting', 'waiting', 'waiting']);
+  });
+});
+
+describe('transcribedTurns', () => {
+  it('counts the turns once the transcript exists', () => {
+    const transcribed = play(
+      started,
+      event({ type: 'transcript', transcript: visit.transcript ?? [] }),
+    );
+
+    expect(transcribedTurns(play(started))).toBeNull();
+    expect(transcribedTurns(transcribed)).toBe(2);
+    expect(transcribedTurns(reduceRun(transcribed, event({ type: 'done', visit })))).toBe(2);
+  });
+});
+
+describe('visitPageFor', () => {
+  const page = `/visits/${VISIT_ID}`;
+
+  it('keeps the form on screen while the recording uploads', () => {
+    expect(visitPageFor(IDLE)).toBeNull();
+    expect(visitPageFor(play(started, created))).toBeNull();
+  });
+
+  it("moves to the visit's page once the API starts answering, and when the run is done", () => {
+    const transcribing = play(started, created, event({ type: 'stage', stage: 'transcribing' }));
+
+    expect(visitPageFor(transcribing)).toBe(page);
+    expect(visitPageFor(reduceRun(transcribing, event({ type: 'done', visit })))).toBe(page);
+    expect(visitPageFor(play(started, created, { type: 'finished-earlier' }))).toBe(page);
+  });
+
+  it('stays on the form when the run has failed', () => {
+    const failed = play(started, created, { type: 'failed', failure: describeInterruption() });
+
+    expect(visitPageFor(failed)).toBeNull();
   });
 });
 
