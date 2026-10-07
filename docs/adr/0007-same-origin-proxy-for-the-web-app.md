@@ -32,7 +32,7 @@ The same proxy function serves pages with a fresh nonce and the security headers
 
 - Sign-in works in every browser, with no cross-origin configuration on the page.
 - Each API call takes one extra hop through the web app's host. On Vercel that hop happens at the edge.
-- Uploads and the streamed response pass through the proxy, so its limits apply as well. Its default body limit is above the API's 4 MB cap.
+- Uploads and the streamed response pass through the proxy, so its limits apply as well. Its default body limit is above the API's 4 MB cap. Next.js's own server also closes a proxied connection that stays silent for 30 seconds, which is why a streamed run sends keep-alive lines (ADR 0003).
 - The shared secret must be set to the same value in both projects. If it is missing, the API ignores the forwarded address and all browser traffic shares one pre-sign-in limit. That failure is strict, not permissive.
 - The forwarded address is only as trustworthy as the platform's report of it to the web app. Vercel sets that itself; a host that passes on a client-supplied header would need the same care.
 - The mobile app is unaffected. It calls the API directly with bearer tokens.

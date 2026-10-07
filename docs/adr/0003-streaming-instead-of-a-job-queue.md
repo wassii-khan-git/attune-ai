@@ -25,6 +25,7 @@ Recordings are capped at 5 minutes and 4 MB, so the work always fits inside one 
 - The transcript and note are saved together at the end, encrypted. A failed run saves nothing and marks the visit `FAILED`.
 - Each model call has a timeout and is retried once after a short pause, and only when the failure is transient.
 - If the client disconnects, the run still finishes and saves, so the result is there on the next visit.
+- While a run is in progress the response also carries a blank line every ten seconds. Transcription can be silent for over a minute, and proxies on the way close a connection that says nothing for that long: the web app's own proxy does so after 30 seconds. A blank line is not an event, and clients skip it.
 
 Newline-delimited JSON was chosen over server-sent events because the request is a `POST` with a body, which the browser's `EventSource` cannot send, and because a line of JSON is trivial to parse from a fetch stream on both web and React Native.
 
