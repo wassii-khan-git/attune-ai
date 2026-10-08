@@ -7,58 +7,60 @@
 /*
  * Design tokens.
  *
- * The palette is neutral with a slight cool tint, plus one accent: a muted
- * teal, used for the primary action and for focus. Everything else is a
+ * The palette is neutral with a slight violet tint, plus one accent: an
+ * indigo, used for the primary action and for focus. Everything else is a
  * shade of the neutral. Colours are in OKLCH so that equal lightness values
  * look equally light, which keeps contrast predictable across both themes.
+ * `app/icon.svg` and the theme colours in `app/layout.tsx` repeat three of
+ * these values as hex; change them together.
  */
 :root {
   --radius: 0.75rem;
 
-  --background: oklch(0.99 0.002 240);
-  --foreground: oklch(0.21 0.015 250);
+  --background: oklch(0.99 0.003 285);
+  --foreground: oklch(0.21 0.02 280);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.015 250);
+  --card-foreground: oklch(0.21 0.02 280);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.015 250);
+  --popover-foreground: oklch(0.21 0.02 280);
 
-  --primary: oklch(0.5 0.085 200);
+  --primary: oklch(0.5 0.17 277);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0.005 240);
-  --secondary-foreground: oklch(0.27 0.015 250);
-  --muted: oklch(0.965 0.004 240);
-  --muted-foreground: oklch(0.5 0.015 250);
-  --accent: oklch(0.95 0.02 200);
-  --accent-foreground: oklch(0.3 0.05 200);
+  --secondary: oklch(0.96 0.006 285);
+  --secondary-foreground: oklch(0.27 0.02 280);
+  --muted: oklch(0.965 0.005 285);
+  --muted-foreground: oklch(0.5 0.02 280);
+  --accent: oklch(0.95 0.022 285);
+  --accent-foreground: oklch(0.32 0.1 277);
   /* Dark enough to read at 4.5:1 as text on its own 10% and 20% tints, which buttons use. */
   --destructive: oklch(0.48 0.2 27);
 
-  --border: oklch(0.91 0.006 240);
-  --input: oklch(0.91 0.006 240);
-  --ring: oklch(0.6 0.09 200);
+  --border: oklch(0.91 0.008 285);
+  --input: oklch(0.91 0.008 285);
+  --ring: oklch(0.6 0.15 277);
 }
 
 .dark {
-  --background: oklch(0.17 0.01 250);
-  --foreground: oklch(0.95 0.005 240);
-  --card: oklch(0.21 0.012 250);
-  --card-foreground: oklch(0.95 0.005 240);
-  --popover: oklch(0.21 0.012 250);
-  --popover-foreground: oklch(0.95 0.005 240);
+  --background: oklch(0.17 0.014 280);
+  --foreground: oklch(0.95 0.006 285);
+  --card: oklch(0.21 0.016 280);
+  --card-foreground: oklch(0.95 0.006 285);
+  --popover: oklch(0.21 0.016 280);
+  --popover-foreground: oklch(0.95 0.006 285);
 
-  --primary: oklch(0.76 0.09 195);
-  --primary-foreground: oklch(0.18 0.02 220);
-  --secondary: oklch(0.26 0.012 250);
-  --secondary-foreground: oklch(0.95 0.005 240);
-  --muted: oklch(0.26 0.012 250);
-  --muted-foreground: oklch(0.7 0.012 250);
-  --accent: oklch(0.28 0.03 200);
-  --accent-foreground: oklch(0.92 0.03 195);
+  --primary: oklch(0.76 0.11 282);
+  --primary-foreground: oklch(0.18 0.03 280);
+  --secondary: oklch(0.26 0.016 280);
+  --secondary-foreground: oklch(0.95 0.006 285);
+  --muted: oklch(0.26 0.016 280);
+  --muted-foreground: oklch(0.7 0.016 280);
+  --accent: oklch(0.28 0.045 280);
+  --accent-foreground: oklch(0.92 0.035 285);
   --destructive: oklch(0.76 0.18 22);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.65 0.09 195);
+  --ring: oklch(0.65 0.13 280);
 }
 
 @theme inline {
@@ -121,6 +123,41 @@
 
   ::selection {
     background-color: color-mix(in oklch, var(--primary) 25%, transparent);
+  }
+}
+
+/*
+ * A scroll area whose scrollbar stays out of sight until the pointer or the
+ * keyboard is inside it. The scrollbar is thin and drawn over a transparent
+ * track, so nothing moves when it appears. Systems that already hide their
+ * scrollbars (touch screens, macOS by default) are unaffected.
+ */
+@utility scrollbar-on-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 150ms;
+
+  &:hover,
+  &:focus-within {
+    scrollbar-color: color-mix(in oklch, var(--foreground) 35%, transparent) transparent;
+  }
+
+  /* Browsers without `scrollbar-color` get the same result from the older pseudo-elements. */
+  @supports not (scrollbar-color: auto) {
+    &::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      border-radius: 9999px;
+      background-color: transparent;
+    }
+
+    &:hover::-webkit-scrollbar-thumb,
+    &:focus-within::-webkit-scrollbar-thumb {
+      background-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+    }
   }
 }
 

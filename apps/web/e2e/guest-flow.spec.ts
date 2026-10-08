@@ -22,6 +22,7 @@ test('a guest turns a sample consultation into a note, edits it, finds it again 
   const mainNav = page.getByRole('navigation', { name: 'Main' });
   const visits = page.getByRole('list', { name: 'Visits' });
   const plan = page.getByLabel('Plan');
+  const consent = page.getByRole('alertdialog', { name: 'Has everyone agreed?' });
 
   await test.step('start as a guest, with no visits', async () => {
     await page.goto('/');
@@ -41,7 +42,13 @@ test('a guest turns a sample consultation into a note, edits it, finds it again 
     await expect(page.getByRole('group', { name: `Selected audio: ${VISIT_TITLE}` })).toBeFocused();
 
     await page.getByRole('button', { name: 'Create note' }).click();
-    await expect(page.getByText('Confirm consent before you continue.')).toBeVisible();
+    await expect(consent).toBeVisible();
+    // The question opens with the focus on the way out, so a stray Enter never confirms.
+    await expect(consent.getByRole('button', { name: 'Cancel' })).toBeFocused();
+
+    await consent.getByRole('button', { name: 'Cancel' }).click();
+    await expect(consent).toBeHidden();
+    await expect(page).toHaveURL(/\/visits\/new$/);
   });
 
   await test.step('leaving with audio that was never uploaded asks first', async () => {
@@ -52,17 +59,27 @@ test('a guest turns a sample consultation into a note, edits it, finds it again 
     await expect(page.getByLabel('Visit title')).toHaveValue(VISIT_TITLE);
   });
 
-  await test.step('with consent, the transcript and the note arrive on the visit page', async () => {
-    await page.getByRole('checkbox', { name: /has agreed/ }).check();
+  await test.step('with consent, the note arrives on the visit page', async () => {
     await page.getByRole('button', { name: 'Create note' }).click();
+    await consent.getByRole('button', { name: 'Yes, everyone has agreed' }).click();
 
     await expect(page).toHaveURL(/\/visits\/[0-9a-f-]{36}$/);
     await expect(page.getByRole('heading', { name: VISIT_TITLE })).toBeVisible();
-    await expect(page.getByText('What brings you in today?')).toBeVisible();
     await expect(page.getByLabel('Subjective')).toHaveValue(/Sore throat/);
     await expect(plan).toHaveValue('Rest and fluids.');
     await expect(page.getByRole('button', { name: 'Copy note' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Print or save as PDF' })).toBeVisible();
+  });
+
+  await test.step('the transcript stays out of sight until it is asked for', async () => {
+    const transcript = page.getByRole('dialog', { name: 'Transcript' });
+    await expect(page.getByText('What brings you in today?')).toBeHidden();
+
+    await page.getByRole('button', { name: 'Show transcript' }).click();
+    await expect(transcript.getByText('What brings you in today?')).toBeVisible();
+
+    await transcript.getByRole('button', { name: 'Close' }).click();
+    await expect(transcript).toBeHidden();
   });
 
   await test.step('an edit is saved without asking, and survives a reload', async () => {
