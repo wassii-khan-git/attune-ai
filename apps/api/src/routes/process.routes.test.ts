@@ -9,6 +9,7 @@ import {
 import request, { type Response } from 'supertest';
 import { describe, expect, it } from 'vitest';
 
+import { NOTE_PROMPT, TRANSCRIPTION_PROMPT } from '../ai/prompts.js';
 import { ScribeModelError } from '../ai/scribe-model.js';
 import {
   createFakeScribeModel,
@@ -30,12 +31,33 @@ const WAV = Buffer.concat([
 ]);
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
-const retryable = () => new ScribeModelError('provider overloaded', true);
-const permanent = () => new ScribeModelError('request rejected', false);
+/** What the provider says when it is overloaded. None of it may reach a client or a log. */
+const PROVIDER_WORDING = 'This model is currently experiencing high demand (generativelanguage)';
+
+const retryable = () =>
+  new ScribeModelError('provider overloaded', 'unavailable', {
+    cause: Object.assign(new Error(PROVIDER_WORDING), { name: 'AI_APICallError' }),
+  });
+const permanent = () => new ScribeModelError('request rejected', 'rejected');
+const unusable = () => new ScribeModelError('unusable response', 'invalid_output');
 
 function setup(script: FakeScribeModelScript = {}) {
   const model = createFakeScribeModel(script);
   return { model, ...createTestApp({ scribeModel: model }) };
+}
+
+/** Two scripted models: the configured one, and the one that stands in for it. */
+function setupWithFallback(
+  primaryScript: FakeScribeModelScript = {},
+  fallbackScript: FakeScribeModelScript = {},
+) {
+  const primary = createFakeScribeModel(primaryScript);
+  const fallback = createFakeScribeModel(fallbackScript);
+  return {
+    primary,
+    fallback,
+    ...createTestApp({ scribeModel: primary, scribeFallbackModel: fallback }),
+  };
 }
 
 type Client = { userId: string; bearer: string };
@@ -253,8 +275,10 @@ describe('POST /v1/visits/:id/process', () => {
         msg: 'visit processed',
         visitId: id,
         turns: FAKE_TRANSCRIPT.length,
-        transcriptionPrompt: 'transcribe-v1',
-        notePrompt: 'note-v1',
+        transcriptionPrompt: TRANSCRIPTION_PROMPT.version,
+        notePrompt: NOTE_PROMPT.version,
+        transcriptionModel: 'primary',
+        noteModel: 'primary',
       }),
     );
   });
@@ -592,10 +616,12 @@ describe('model failures', () => {
         type: 'error',
         error: {
           code: 'AI_UNAVAILABLE',
-          message: 'The AI service could not process this recording. Please try again.',
+          message: 'The AI service is busy right now. Please try again in a minute.',
         },
       },
     ]);
+    expect(String(response.body)).not.toContain(PROVIDER_WORDING);
+    expect(logs.raw()).not.toContain(PROVIDER_WORDING);
     expect(model.transcribeCalls).toHaveLength(2);
     expect(await getVisit(app, alice, id)).toMatchObject({
       status: 'FAILED',
@@ -614,7 +640,13 @@ describe('model failures', () => {
 
     const response = await upload(app, alice, id);
 
-    expect(lastEvent(response)).toMatchObject({ type: 'error', error: { code: 'AI_UNAVAILABLE' } });
+    expect(lastEvent(response)).toEqual({
+      type: 'error',
+      error: {
+        code: 'AI_FAILED',
+        message: 'The AI service could not process this recording. Please try again.',
+      },
+    });
     expect(model.transcribeCalls).toHaveLength(1);
   });
 
@@ -668,17 +700,17 @@ describe('model failures', () => {
       ),
       { name: 'AI_TypeValidationError', value: { text: 'SYNTHETIC-TRANSCRIPT' } },
     );
-    const { app, logs } = setup({
-      transcribeFailures: [
-        new ScribeModelError('The model returned an unusable response', false, { cause: quoted }),
-      ],
-    });
+    const rejectedOutput = () =>
+      new ScribeModelError('The model returned an unusable response', 'invalid_output', {
+        cause: quoted,
+      });
+    const { app, logs } = setup({ transcribeFailures: [rejectedOutput(), rejectedOutput()] });
     const alice = await signUp(app);
     const id = await createVisit(app, alice);
 
     const response = await upload(app, alice, id);
 
-    expect(lastEvent(response)).toMatchObject({ type: 'error', error: { code: 'AI_UNAVAILABLE' } });
+    expect(lastEvent(response)).toMatchObject({ type: 'error', error: { code: 'AI_FAILED' } });
     expect(logs.raw()).not.toContain('SYNTHETIC-TRANSCRIPT');
     const failure = logs.entries().find((entry) => entry.msg === 'visit processing failed');
     expect(failure?.err).toMatchObject({
@@ -710,6 +742,126 @@ describe('model failures', () => {
     const response = await upload(app, alice, id);
 
     expect(lastEvent(response)?.type).toBe('done');
+  });
+});
+
+describe('fallback models', () => {
+  it('moves transcription to the fallback when the first model is overloaded, and says so in the log', async () => {
+    const { app, primary, fallback, logs } = setupWithFallback({
+      transcribeFailures: [retryable()],
+    });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)?.type).toBe('done');
+    expect(primary.transcribeCalls).toHaveLength(1);
+    expect(fallback.transcribeCalls).toHaveLength(1);
+    // Each task falls back by itself: the note still comes from its first model.
+    expect(primary.draftCalls).toHaveLength(1);
+    expect(fallback.draftCalls).toHaveLength(0);
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        msg: 'model call failed, retrying',
+        visitId: id,
+        stage: 'transcribing',
+        retryOn: 'fallback',
+      }),
+    );
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({
+        msg: 'visit processed',
+        transcriptionModel: 'fallback',
+        noteModel: 'primary',
+      }),
+    );
+  });
+
+  it('moves note drafting to the fallback when the first model is overloaded', async () => {
+    const { app, primary, fallback, logs } = setupWithFallback({ draftFailures: [retryable()] });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)?.type).toBe('done');
+    expect(primary.draftCalls).toHaveLength(1);
+    expect(fallback.draftCalls).toEqual([FAKE_TRANSCRIPT]);
+    expect(fallback.transcribeCalls).toHaveLength(0);
+    expect((await getVisit(app, alice, id)).note).toEqual(FAKE_NOTE);
+    expect(logs.entries()).toContainEqual(
+      expect.objectContaining({
+        msg: 'visit processed',
+        transcriptionModel: 'primary',
+        noteModel: 'fallback',
+      }),
+    );
+  });
+
+  it('asks the same model again after unusable output, which another model would not explain', async () => {
+    const { app, primary, fallback } = setupWithFallback({ transcribeFailures: [unusable()] });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)?.type).toBe('done');
+    expect(primary.transcribeCalls).toHaveLength(2);
+    expect(fallback.transcribeCalls).toHaveLength(0);
+  });
+
+  it('retries on the same model for a task that has no fallback', async () => {
+    const primary = createFakeScribeModel({ transcribeFailures: [retryable()] });
+    const fallback = createFakeScribeModel();
+    const { app } = createTestApp({
+      scribeModel: primary,
+      scribeFallbackModel: { draftNote: fallback.draftNote },
+    });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)?.type).toBe('done');
+    expect(primary.transcribeCalls).toHaveLength(2);
+    expect(fallback.transcribeCalls).toHaveLength(0);
+  });
+
+  it('never sends a rejected request to the fallback', async () => {
+    const { app, primary, fallback } = setupWithFallback({ transcribeFailures: [permanent()] });
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)).toMatchObject({ type: 'error', error: { code: 'AI_FAILED' } });
+    expect(primary.transcribeCalls).toHaveLength(1);
+    expect(fallback.transcribeCalls).toHaveLength(0);
+  });
+
+  it('reports the service as busy when the fallback is unavailable too, and makes no third call', async () => {
+    const { app, primary, fallback } = setupWithFallback(
+      { transcribeFailures: [retryable(), retryable()] },
+      { transcribeFailures: [retryable(), retryable()] },
+    );
+    const alice = await signUp(app);
+    const id = await createVisit(app, alice);
+
+    const response = await upload(app, alice, id);
+
+    expect(lastEvent(response)).toEqual({
+      type: 'error',
+      error: {
+        code: 'AI_UNAVAILABLE',
+        message: 'The AI service is busy right now. Please try again in a minute.',
+      },
+    });
+    expect(String(response.body)).not.toContain(PROVIDER_WORDING);
+    expect(primary.transcribeCalls).toHaveLength(1);
+    expect(fallback.transcribeCalls).toHaveLength(1);
+    expect((await getVisit(app, alice, id)).status).toBe('FAILED');
   });
 });
 

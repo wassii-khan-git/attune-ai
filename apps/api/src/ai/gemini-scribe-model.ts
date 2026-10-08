@@ -4,7 +4,7 @@ import { APICallError, generateText, Output, streamText } from 'ai';
 import { z } from 'zod';
 
 import { NOTE_PROMPT, TRANSCRIPTION_PROMPT } from './prompts.js';
-import { ScribeModelError, type ScribeModel } from './scribe-model.js';
+import { ScribeModelError, type ScribeFallbackModel, type ScribeModel } from './scribe-model.js';
 
 const transcriptionOutput = Output.object({ schema: z.object({ turns: transcriptSchema }) });
 const noteOutput = Output.object({ schema: soapNoteSchema });
@@ -12,48 +12,84 @@ const noteOutput = Output.object({ schema: soapNoteSchema });
 /** Request timeouts and aborts surface under these names. */
 const ABORT_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 
+/** The provider does not know the model: it was retired, or its name is wrong. */
+const MODEL_NOT_FOUND = 404;
+
 /**
- * Normalises every failure to a `ScribeModelError`. Only an explicit provider
- * verdict or a timeout decides retryability. A response that failed schema
- * validation is worth one more attempt, because output varies between calls.
+ * Normalises every failure to a `ScribeModelError`.
+ *
+ * The provider's own verdict separates `unavailable` from `rejected`: the SDK
+ * marks as retryable exactly the answers that mean "not now" (429 for quota,
+ * 5xx for overload or outage, and no answer at all). A timeout is the same
+ * situation seen from this side, and so is a model that no longer exists:
+ * nothing is wrong with the request, and another model can still answer it.
+ * Anything else is a response that could not be used, typically one that
+ * failed schema validation.
+ *
+ * The message names the model, which comes from configuration, and the status
+ * code, because the provider's own explanation will not be logged.
  */
-function toScribeModelError(error: unknown): ScribeModelError {
+export function toScribeModelError(error: unknown, modelId: string): ScribeModelError {
   if (error instanceof ScribeModelError) {
     return error;
   }
   if (APICallError.isInstance(error)) {
-    // The status code is recorded because the provider's own explanation will not be logged.
+    const unavailable = error.isRetryable || error.statusCode === MODEL_NOT_FOUND;
     return new ScribeModelError(
-      `The model request failed (HTTP ${String(error.statusCode ?? 'no status')})`,
-      error.isRetryable,
+      `The request to model "${modelId}" failed (HTTP ${String(error.statusCode ?? 'no status')})`,
+      unavailable ? 'unavailable' : 'rejected',
       { cause: error },
     );
   }
   if (error instanceof Error && ABORT_ERROR_NAMES.has(error.name)) {
-    return new ScribeModelError('The model request timed out', true, { cause: error });
+    return new ScribeModelError(`The request to model "${modelId}" timed out`, 'unavailable', {
+      cause: error,
+    });
   }
-  return new ScribeModelError('The model returned an unusable response', true, { cause: error });
+  return new ScribeModelError(
+    `Model "${modelId}" returned an unusable response`,
+    'invalid_output',
+    { cause: error },
+  );
 }
+
+/** The model for one task, and the one that stands in for it. */
+export type TaskModelIds = {
+  modelId: string;
+  /** Tried when `modelId` is overloaded or unavailable. */
+  fallbackModelId: string | undefined;
+};
 
 export type GeminiScribeModelOptions = {
   apiKey: string;
-  /** From `GEMINI_MODEL`. Never hardcoded, so a model change is a config change. */
-  modelId: string;
+  /** Model ids always come from configuration, so changing a model is a config change. */
+  transcription: TaskModelIds;
+  note: TaskModelIds;
+  /** Injectable so tests can answer in place of the provider. */
+  fetch?: typeof fetch;
+};
+
+export type GeminiScribeModels = {
+  primary: ScribeModel;
+  fallback: ScribeFallbackModel;
 };
 
 /**
- * Gemini through the Vercel AI SDK. Retries are switched off here because the
- * generation service owns the retry policy; two layers of retries would
- * multiply each other.
+ * Gemini through the Vercel AI SDK, with a model per task. Retries are switched
+ * off here because the generation service owns the retry policy, including
+ * when to move to a fallback model; two layers of retries would multiply each other.
  */
-export function createGeminiScribeModel({
+export function createGeminiScribeModels({
   apiKey,
-  modelId,
-}: GeminiScribeModelOptions): ScribeModel {
-  const model = createGoogleGenerativeAI({ apiKey })(modelId);
+  transcription,
+  note,
+  fetch,
+}: GeminiScribeModelOptions): GeminiScribeModels {
+  const google = createGoogleGenerativeAI({ apiKey, ...(fetch === undefined ? {} : { fetch }) });
 
-  return {
-    transcribe: async (audio, signal) => {
+  const transcriber = (modelId: string): ScribeModel['transcribe'] => {
+    const model = google(modelId);
+    return async (audio, signal) => {
       try {
         const { output } = await generateText({
           model,
@@ -73,11 +109,14 @@ export function createGeminiScribeModel({
         });
         return output.turns;
       } catch (error) {
-        throw toScribeModelError(error);
+        throw toScribeModelError(error, modelId);
       }
-    },
+    };
+  };
 
-    draftNote: async function* (transcript, signal) {
+  const noteDrafter = (modelId: string): ScribeModel['draftNote'] => {
+    const model = google(modelId);
+    return async function* (transcript, signal) {
       let streamError: unknown;
       try {
         const result = streamText({
@@ -95,16 +134,31 @@ export function createGeminiScribeModel({
           },
         });
 
-        for await (const note of result.partialOutputStream) {
-          yield { type: 'partial', note };
+        for await (const partial of result.partialOutputStream) {
+          yield { type: 'partial', note: partial };
         }
         if (streamError !== undefined) {
-          throw toScribeModelError(streamError);
+          throw toScribeModelError(streamError, modelId);
         }
         yield { type: 'final', note: await result.output };
       } catch (error) {
-        throw toScribeModelError(streamError ?? error);
+        throw toScribeModelError(streamError ?? error, modelId);
       }
+    };
+  };
+
+  return {
+    primary: {
+      transcribe: transcriber(transcription.modelId),
+      draftNote: noteDrafter(note.modelId),
+    },
+    fallback: {
+      ...(transcription.fallbackModelId === undefined
+        ? {}
+        : { transcribe: transcriber(transcription.fallbackModelId) }),
+      ...(note.fallbackModelId === undefined
+        ? {}
+        : { draftNote: noteDrafter(note.fallbackModelId) }),
     },
   };
 }

@@ -19,6 +19,7 @@ export const errorCodeSchema = z.enum([
   'QUOTA_EXCEEDED',
   'NO_SPEECH_DETECTED',
   'AI_UNAVAILABLE',
+  'AI_FAILED',
   'INTERNAL_ERROR',
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, envSchema, loadConfig } from './env.js';
+import { ConfigError, envSchema, loadConfig, scribeModelIds } from './env.js';
 
 const validEnv = {
   NODE_ENV: 'test',
@@ -143,6 +143,60 @@ describe('loadConfig', () => {
       expect(message).not.toContain(value);
     }
     expect(message).not.toContain('hunter2');
+  });
+});
+
+describe('scribeModelIds', () => {
+  it('uses GEMINI_MODEL for both tasks, with no fallback, when nothing else is set', () => {
+    expect(scribeModelIds(loadConfig(validEnv))).toEqual({
+      transcription: { modelId: 'test-model', fallbackModelId: undefined },
+      note: { modelId: 'test-model', fallbackModelId: undefined },
+    });
+  });
+
+  it('gives each task its own model and its own fallback', () => {
+    const config = loadConfig({
+      ...validEnv,
+      GEMINI_TRANSCRIBE_MODEL: 'listener',
+      GEMINI_TRANSCRIBE_FALLBACK_MODEL: 'spare-listener',
+      GEMINI_NOTE_MODEL: 'writer',
+      GEMINI_NOTE_FALLBACK_MODEL: 'spare-writer',
+    });
+
+    expect(scribeModelIds(config)).toEqual({
+      transcription: { modelId: 'listener', fallbackModelId: 'spare-listener' },
+      note: { modelId: 'writer', fallbackModelId: 'spare-writer' },
+    });
+  });
+
+  it('lets one task override the model while the other keeps GEMINI_MODEL', () => {
+    const config = loadConfig({ ...validEnv, GEMINI_NOTE_MODEL: 'writer' });
+
+    expect(scribeModelIds(config)).toMatchObject({
+      transcription: { modelId: 'test-model' },
+      note: { modelId: 'writer' },
+    });
+  });
+
+  it('reads a blank optional model as unset, as it is in a copied .env.example', () => {
+    const config = loadConfig({
+      ...validEnv,
+      GEMINI_TRANSCRIBE_MODEL: '',
+      GEMINI_NOTE_FALLBACK_MODEL: '  ',
+    });
+
+    expect(scribeModelIds(config)).toEqual({
+      transcription: { modelId: 'test-model', fallbackModelId: undefined },
+      note: { modelId: 'test-model', fallbackModelId: undefined },
+    });
+  });
+
+  it('still requires GEMINI_MODEL when both tasks name their own model', () => {
+    const { GEMINI_MODEL: _omitted, ...withoutDefault } = validEnv;
+
+    expect(
+      problemsFor({ ...withoutDefault, GEMINI_TRANSCRIBE_MODEL: 'a', GEMINI_NOTE_MODEL: 'b' }),
+    ).toEqual(['GEMINI_MODEL: Required']);
   });
 });
 

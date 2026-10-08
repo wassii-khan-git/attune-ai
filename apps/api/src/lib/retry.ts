@@ -15,9 +15,12 @@ const realSleep = (ms: number): Promise<void> =>
  * Runs `attempt`, and runs it one more time after a pause if it fails with a
  * retryable error. One retry absorbs a transient provider hiccup without
  * turning a real outage into a long wait for the user.
+ *
+ * The second call is given the failure that caused it, so the caller can take
+ * a different route the second time.
  */
 export async function withOneRetry<T>(
-  attempt: () => Promise<T>,
+  attempt: (previousFailure?: unknown) => Promise<T>,
   { isRetryable, backoffMs, sleep = realSleep }: RetryOptions,
 ): Promise<T> {
   try {
@@ -27,15 +30,16 @@ export async function withOneRetry<T>(
       throw error;
     }
     await sleep(backoffMs);
-    return attempt();
+    return attempt(error);
   }
 }
 
 /** The same policy for a stream: if it fails, the whole stream is started again once. */
 export async function* streamWithOneRetry<T>(
-  attempt: () => AsyncIterable<T>,
+  attempt: (previousFailure?: unknown) => AsyncIterable<T>,
   { isRetryable, backoffMs, sleep = realSleep }: RetryOptions,
 ): AsyncGenerator<T> {
+  let failure: unknown;
   try {
     yield* attempt();
     return;
@@ -43,7 +47,8 @@ export async function* streamWithOneRetry<T>(
     if (!isRetryable(error)) {
       throw error;
     }
+    failure = error;
   }
   await sleep(backoffMs);
-  yield* attempt();
+  yield* attempt(failure);
 }

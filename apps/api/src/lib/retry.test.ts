@@ -48,6 +48,14 @@ describe('withOneRetry', () => {
     await expect(withOneRetry(attempt, { isRetryable, backoffMs: 0 })).rejects.toBe(permanent);
     expect(attempt).toHaveBeenCalledTimes(1);
   });
+
+  it('tells the second attempt what the first one failed with', async () => {
+    const attempt = vi.fn().mockRejectedValueOnce(transient).mockResolvedValueOnce('ok');
+
+    await withOneRetry(attempt, { isRetryable, backoffMs: 0, sleep: () => Promise.resolve() });
+
+    expect(attempt.mock.calls).toEqual([[], [transient]]);
+  });
 });
 
 describe('streamWithOneRetry', () => {
@@ -90,6 +98,20 @@ describe('streamWithOneRetry', () => {
       'b',
     ]);
     expect(source.attempts).toBe(2);
+  });
+
+  it('tells the second stream what the first one failed with', async () => {
+    const source = scripted(['a'], transient, [1]);
+    const seen: unknown[] = [];
+
+    await collect(
+      streamWithOneRetry((previousFailure) => {
+        seen.push(previousFailure);
+        return source.stream();
+      }, options),
+    );
+
+    expect(seen).toEqual([undefined, transient]);
   });
 
   it('fails after the second broken stream', async () => {

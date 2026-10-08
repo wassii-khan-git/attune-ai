@@ -1,6 +1,6 @@
 import express, { Router, type Express } from 'express';
 
-import type { ScribeModel } from './ai/scribe-model.js';
+import type { ScribeFallbackModel, ScribeModel } from './ai/scribe-model.js';
 import { createAccountController } from './controllers/account.controller.js';
 import { createAuthController } from './controllers/auth.controller.js';
 import { createGenerationController } from './controllers/generation.controller.js';
@@ -65,6 +65,8 @@ export type AppDependencies = {
   fieldEncryptionKey: Buffer;
   /** Transcribes audio and drafts notes. Gemini in production, a scripted model in tests. */
   scribeModel: ScribeModel;
+  /** A second model per task, tried when the first is overloaded or unavailable. */
+  scribeFallbackModel?: ScribeFallbackModel;
   /** Pause before a retried model call. Injectable so tests do not wait. */
   sleep?: (ms: number) => Promise<void>;
   /** Gap between keep-alive lines in a streamed run. Shortened in tests. */
@@ -94,6 +96,7 @@ export function createApp({
   webProxySecret,
   fieldEncryptionKey,
   scribeModel,
+  scribeFallbackModel,
   sleep,
   streamKeepAliveMs,
   secureCookies,
@@ -156,6 +159,7 @@ export function createApp({
           rateLimits,
           dailyBudget: dailyGenerationBudget,
           model: scribeModel,
+          ...(scribeFallbackModel === undefined ? {} : { fallbackModel: scribeFallbackModel }),
           cipher,
           audit,
           now,

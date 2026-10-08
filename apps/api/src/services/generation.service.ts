@@ -1,7 +1,12 @@
-import type { ErrorCode, ProcessEvent, SoapNote } from '@attune/shared';
+import type { ErrorCode, ProcessEvent, ProcessStage, SoapNote } from '@attune/shared';
 
 import { NOTE_PROMPT, TRANSCRIPTION_PROMPT } from '../ai/prompts.js';
-import { ScribeModelError, type AudioInput, type ScribeModel } from '../ai/scribe-model.js';
+import {
+  ScribeModelError,
+  type AudioInput,
+  type ScribeFallbackModel,
+  type ScribeModel,
+} from '../ai/scribe-model.js';
 import { AppError } from '../lib/app-error.js';
 import type { FieldCipher } from '../lib/field-cipher.js';
 import type { Logger } from '../lib/logger.js';
@@ -18,6 +23,7 @@ export const DAILY_GENERATION_LIMIT = { registered: 10, guest: 3 } as const;
 
 // Sized so that the worst case, both calls timing out and being retried once,
 // still ends inside the platform's 300-second request limit: 2 x 75 + 2 x 45 + pauses.
+// A fallback model takes the place of the retry, so it adds nothing to that sum.
 const TRANSCRIPTION_TIMEOUT_MS = 75_000;
 const NOTE_TIMEOUT_MS = 45_000;
 const RETRY_BACKOFF_MS = 1_000;
@@ -56,6 +62,8 @@ export type GenerationServiceDependencies = {
   /** Generations allowed per UTC day across all users. */
   dailyBudget: number;
   model: ScribeModel;
+  /** A second model per task, tried when the first is overloaded or unavailable. */
+  fallbackModel?: ScribeFallbackModel;
   cipher: FieldCipher;
   audit: AuditService;
   now: () => Date;
@@ -79,12 +87,40 @@ function toClientError(error: unknown): { code: ErrorCode; message: string } {
     return { code: error.code, message: error.message };
   }
   if (error instanceof ScribeModelError) {
-    return {
-      code: 'AI_UNAVAILABLE',
-      message: 'The AI service could not process this recording. Please try again.',
-    };
+    // Overloaded, down, out of quota or too slow: nothing is wrong with the
+    // recording, and the same request can succeed a little later.
+    return error.kind === 'unavailable'
+      ? {
+          code: 'AI_UNAVAILABLE',
+          message: 'The AI service is busy right now. Please try again in a minute.',
+        }
+      : {
+          code: 'AI_FAILED',
+          message: 'The AI service could not process this recording. Please try again.',
+        };
   }
   return { code: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' };
+}
+
+/** Which of a task's two models an attempt went to. */
+type ModelRoute = 'primary' | 'fallback';
+
+/**
+ * Picks the model for an attempt. The first attempt goes to the primary model.
+ * The retry goes to the fallback when one is configured and the primary was
+ * overloaded or unavailable: a different model is the better bet then. After
+ * any other retryable failure, such as unusable output, the primary is asked again.
+ */
+function chooseModel<T>(
+  primary: T,
+  fallback: T | undefined,
+  previousFailure: unknown,
+): { call: T; route: ModelRoute } {
+  const primaryUnavailable =
+    previousFailure instanceof ScribeModelError && previousFailure.kind === 'unavailable';
+  return fallback !== undefined && primaryUnavailable
+    ? { call: fallback, route: 'fallback' }
+    : { call: primary, route: 'primary' };
 }
 
 export function createGenerationService({
@@ -93,6 +129,7 @@ export function createGenerationService({
   rateLimits,
   dailyBudget,
   model,
+  fallbackModel = {},
   cipher,
   audit,
   now,
@@ -112,11 +149,22 @@ export function createGenerationService({
   ): AsyncGenerator<ProcessEvent> {
     const startedAt = now().getTime();
     try {
+      // A retry is logged when it happens, because a run that succeeds on its
+      // second attempt would otherwise hide that the first model is failing.
+      const logRetry = (stage: ProcessStage, failure: unknown, route: ModelRoute): void => {
+        if (failure !== undefined) {
+          log.warn({ err: failure, visitId, stage, retryOn: route }, 'model call failed, retrying');
+        }
+      };
+
       yield { type: 'stage', stage: 'transcribing' };
-      const transcript = await withOneRetry(
-        () => model.transcribe(audio, AbortSignal.timeout(TRANSCRIPTION_TIMEOUT_MS)),
-        retry,
-      );
+      let transcribedBy: ModelRoute = 'primary';
+      const transcript = await withOneRetry((failure) => {
+        const { call, route } = chooseModel(model.transcribe, fallbackModel.transcribe, failure);
+        logRetry('transcribing', failure, route);
+        transcribedBy = route;
+        return call(audio, AbortSignal.timeout(TRANSCRIPTION_TIMEOUT_MS));
+      }, retry);
       if (transcript.length === 0) {
         throw new GenerationFailure(
           'NO_SPEECH_DETECTED',
@@ -127,10 +175,13 @@ export function createGenerationService({
 
       yield { type: 'stage', stage: 'drafting' };
       let note: SoapNote | undefined;
-      const draft = streamWithOneRetry(
-        () => model.draftNote(transcript, AbortSignal.timeout(NOTE_TIMEOUT_MS)),
-        retry,
-      );
+      let draftedBy: ModelRoute = 'primary';
+      const draft = streamWithOneRetry((failure) => {
+        const { call, route } = chooseModel(model.draftNote, fallbackModel.draftNote, failure);
+        logRetry('drafting', failure, route);
+        draftedBy = route;
+        return call(transcript, AbortSignal.timeout(NOTE_TIMEOUT_MS));
+      }, retry);
       for await (const event of draft) {
         if (event.type === 'final') {
           note = event.note;
@@ -139,7 +190,7 @@ export function createGenerationService({
         }
       }
       if (note === undefined) {
-        throw new ScribeModelError('The model stream ended without a note', false);
+        throw new ScribeModelError('The model stream ended without a note', 'invalid_output');
       }
 
       const saved = await visits.completeProcessing(visitId, caller.userId, {
@@ -168,6 +219,8 @@ export function createGenerationService({
           durationMs: now().getTime() - startedAt,
           transcriptionPrompt: TRANSCRIPTION_PROMPT.version,
           notePrompt: NOTE_PROMPT.version,
+          transcriptionModel: transcribedBy,
+          noteModel: draftedBy,
         },
         'visit processed',
       );

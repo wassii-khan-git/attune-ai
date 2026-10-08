@@ -1,9 +1,9 @@
 import type { SoapNote } from '@attune/shared';
 
-import { createGeminiScribeModel } from '../src/ai/gemini-scribe-model.js';
+import { createGeminiScribeModels } from '../src/ai/gemini-scribe-model.js';
 import { NOTE_PROMPT } from '../src/ai/prompts.js';
 import { ScribeModelError } from '../src/ai/scribe-model.js';
-import { ConfigError, loadConfig } from '../src/config/env.js';
+import { ConfigError, loadConfig, scribeModelIds } from '../src/config/env.js';
 import { streamWithOneRetry } from '../src/lib/retry.js';
 import { EVAL_CASES, type EvalCase } from './cases.js';
 import { checkNote, type CheckResult } from './checks.js';
@@ -14,6 +14,10 @@ import { checkNote, type CheckResult } from './checks.js';
  *
  * It calls the live model, so it is run by hand with `pnpm eval` and is not
  * part of CI. It covers the drafting stage only; transcription needs audio.
+ *
+ * Only the configured note model is scored, never its fallback, so a result
+ * always belongs to the model named in the output. To score the fallback,
+ * run it with `GEMINI_NOTE_MODEL` set to that model.
  */
 
 const TIMEOUT_MS = 60_000;
@@ -35,9 +39,10 @@ function configOrExit() {
 }
 
 const config = configOrExit();
-const model = createGeminiScribeModel({
+const modelIds = scribeModelIds(config);
+const { primary: model } = createGeminiScribeModels({
   apiKey: config.GOOGLE_GENERATIVE_AI_API_KEY,
-  modelId: config.GEMINI_MODEL,
+  ...modelIds,
 });
 
 async function draft(evalCase: EvalCase): Promise<SoapNote> {
@@ -74,7 +79,7 @@ for (const evalCase of EVAL_CASES) {
 }
 
 const idWidth = Math.max(...EVAL_CASES.map((evalCase) => evalCase.id.length), 'case'.length);
-console.log(`Model: ${config.GEMINI_MODEL}    Prompt: ${NOTE_PROMPT.version}\n`);
+console.log(`Model: ${modelIds.note.modelId}    Prompt: ${NOTE_PROMPT.version}\n`);
 console.log(`${'case'.padEnd(idWidth)}  result  checks`);
 console.log(`${'-'.repeat(idWidth)}  ------  ------`);
 

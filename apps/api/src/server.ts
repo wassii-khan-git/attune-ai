@@ -1,8 +1,8 @@
 import type { Express } from 'express';
 
-import { createGeminiScribeModel } from './ai/gemini-scribe-model.js';
+import { createGeminiScribeModels } from './ai/gemini-scribe-model.js';
 import { createApp } from './create-app.js';
-import { ConfigError, loadConfig, type Config } from './config/env.js';
+import { ConfigError, loadConfig, scribeModelIds, type Config } from './config/env.js';
 import { installCrashHandlers } from './lib/crash-handlers.js';
 import { createLogger } from './lib/logger.js';
 import { createHealthRepository } from './repositories/health.repository.js';
@@ -31,6 +31,10 @@ installCrashHandlers(logger);
 
 const prisma = createPrismaClient(config.DATABASE_URL);
 const healthRepository = createHealthRepository(prisma);
+const scribe = createGeminiScribeModels({
+  apiKey: config.GOOGLE_GENERATIVE_AI_API_KEY,
+  ...scribeModelIds(config),
+});
 
 // Vercel picks its entry point by looking, at a few fixed paths, for a file that
 // imports express and starts a server. This file is at one of those paths; the
@@ -45,10 +49,8 @@ const app: Express = createApp({
   cronSecret: config.CRON_SECRET,
   ...(config.WEB_PROXY_SECRET === undefined ? {} : { webProxySecret: config.WEB_PROXY_SECRET }),
   fieldEncryptionKey: Buffer.from(config.ENCRYPTION_KEY, 'base64'),
-  scribeModel: createGeminiScribeModel({
-    apiKey: config.GOOGLE_GENERATIVE_AI_API_KEY,
-    modelId: config.GEMINI_MODEL,
-  }),
+  scribeModel: scribe.primary,
+  scribeFallbackModel: scribe.fallback,
   secureCookies: config.NODE_ENV !== 'development',
   dailyGenerationBudget: config.DAILY_GENERATION_BUDGET,
 });

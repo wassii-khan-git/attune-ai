@@ -10,6 +10,16 @@ const postgresUrl = z.url({ protocol: /^postgres(ql)?$/ });
 const secret = z.string().min(MIN_SECRET_LENGTH);
 
 /**
+ * An optional model id. A blank value counts as unset, because `.env.example`
+ * lists every variable and is copied as a starting point.
+ */
+const optionalModelId = z
+  .string()
+  .trim()
+  .transform((value) => (value === '' ? undefined : value))
+  .optional();
+
+/**
  * Browsers send an origin without a path or trailing slash, so each entry is
  * normalised to that form; otherwise `https://app.example.com/` would never match.
  */
@@ -44,7 +54,17 @@ export const envSchema = z
     DATABASE_URL: postgresUrl,
 
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1),
+    /** The model for both tasks, unless one of the two below names its own. */
     GEMINI_MODEL: z.string().min(1),
+    /**
+     * Transcription and note drafting are different jobs, so each can have its
+     * own model. Each can also name a fallback: a second model that takes the
+     * retry when the first is overloaded or unavailable.
+     */
+    GEMINI_TRANSCRIBE_MODEL: optionalModelId,
+    GEMINI_TRANSCRIBE_FALLBACK_MODEL: optionalModelId,
+    GEMINI_NOTE_MODEL: optionalModelId,
+    GEMINI_NOTE_FALLBACK_MODEL: optionalModelId,
 
     ENCRYPTION_KEY: z
       .base64()
@@ -102,6 +122,20 @@ export const envSchema = z
   });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;
+
+/** Which model serves each task, and which one stands in for it when it cannot. */
+export function scribeModelIds(config: Config) {
+  return {
+    transcription: {
+      modelId: config.GEMINI_TRANSCRIBE_MODEL ?? config.GEMINI_MODEL,
+      fallbackModelId: config.GEMINI_TRANSCRIBE_FALLBACK_MODEL,
+    },
+    note: {
+      modelId: config.GEMINI_NOTE_MODEL ?? config.GEMINI_MODEL,
+      fallbackModelId: config.GEMINI_NOTE_FALLBACK_MODEL,
+    },
+  };
+}
 
 export class ConfigError extends SafeError {
   constructor(readonly problems: readonly string[]) {
