@@ -5,7 +5,7 @@
 [![CI](https://github.com/wassii-khan-git/attune-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/wassii-khan-git/attune-ai/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/wassii-khan-git/attune-ai/actions/workflows/codeql.yml/badge.svg)](https://github.com/wassii-khan-git/attune-ai/actions/workflows/codeql.yml)
 
-**[Try the live demo](WEB_URL)** · **[API docs](https://attune-ai-api.vercel.app/docs)** · [Architecture decisions](docs/adr) · [Threat model](docs/threat-model.md)
+**[Try the live demo](https://attune-ai-web.vercel.app)** · **[API docs](https://attune-ai-api.vercel.app/docs)** · [Architecture decisions](docs/adr) · [Threat model](docs/threat-model.md)
 
 > Click **Try as guest**, then **Use a sample consultation**. No sign-up or microphone needed.
 
