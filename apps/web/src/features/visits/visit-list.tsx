@@ -1,10 +1,11 @@
 'use client';
 
 import { type VisitSummary } from '@attune/shared';
-import { ChevronRight, Plus, Search } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Spinner } from '@/components/spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -17,19 +18,31 @@ import { cn } from '@/lib/utils';
 
 import { useProcessRun } from './process-run-provider';
 import { useVisitList } from './use-visit-list';
+import { describeDeleteError } from './visit-errors';
 import { visitStatusLabel } from './visit-list-state';
 
 /** How long typing must pause before the search is sent. */
 const SEARCH_DELAY_MS = 300;
 const LARGE = 'h-11 px-5 text-base';
 
-function VisitRow({ visit }: { visit: VisitSummary }) {
+type VisitRowProps = {
+  visit: VisitSummary;
+  /** Left out for a visit that cannot be deleted right now. The button it is given is where the focus returns. */
+  onDelete?: (button: HTMLButtonElement) => void;
+};
+
+/**
+ * One visit: a link to it, and the way to delete it. They sit side by side in
+ * one row and are separate controls, so neither can be pressed by mistake for
+ * the other with a keyboard or a screen reader.
+ */
+function VisitRow({ visit, onDelete }: VisitRowProps) {
   const status = visitStatusLabel(visit.status);
   return (
-    <li>
+    <li className="flex items-center gap-1 rounded-xl border pr-2 transition-colors hover:bg-muted/60 has-[a:focus-visible]:border-ring has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/50">
       <Link
         href={visitPath(visit.id)}
-        className="flex items-center justify-between gap-4 rounded-xl border p-4 transition-colors outline-none hover:bg-muted/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-xl p-4 outline-none"
       >
         <div className="min-w-0 space-y-1">
           <p className="truncate font-medium">{visit.title}</p>
@@ -38,15 +51,28 @@ function VisitRow({ visit }: { visit: VisitSummary }) {
             {visit.durationSec !== null && ` · ${formatDuration(visit.durationSec)} recording`}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {status !== null && (
-            <Badge variant={visit.status === 'FAILED' ? 'destructive' : 'secondary'}>
-              {status}
-            </Badge>
-          )}
-          <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
-        </div>
+        {status !== null && (
+          <Badge
+            variant={visit.status === 'FAILED' ? 'destructive' : 'secondary'}
+            className="shrink-0"
+          >
+            {status}
+          </Badge>
+        )}
       </Link>
+      {onDelete !== undefined && (
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={`Delete visit: ${visit.title}`}
+          className="size-10 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20"
+          onClick={(event) => {
+            onDelete(event.currentTarget);
+          }}
+        >
+          <Trash2 aria-hidden />
+        </Button>
+      )}
     </li>
   );
 }
@@ -71,11 +97,26 @@ function Skeleton() {
  *
  * What is typed into the search stays in the page. It is not put in the
  * address bar, where it would end up in the browser's history.
+ *
+ * A visit is deleted from here, not from its own page: each row has a delete
+ * button, which asks in a dialog before anything is removed.
  */
 export function VisitList() {
-  const { state, search, loadMore, refresh } = useVisitList();
-  const { state: run } = useProcessRun();
+  const { state, search, loadMore, refresh, remove } = useVisitList();
+  const { state: run, clear } = useProcessRun();
   const [text, setText] = useState('');
+  // The visit the delete dialog is asking about. It stays set while the dialog closes.
+  const [asking, setAsking] = useState<VisitSummary | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletion, setDeletion] = useState<{ busy: boolean; error: string | null }>({
+    busy: false,
+    error: null,
+  });
+  const [deleted, setDeleted] = useState('');
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Where the focus goes when the dialog closes: back to the row's button, or,
+  // once that row is gone, to the heading of the list.
+  const focusAfterDialog = useRef<HTMLElement | null>(null);
 
   // Search once typing has paused. The query in the list state is what was last asked for.
   const wanted = text.trim();
@@ -102,9 +143,40 @@ export function VisitList() {
     }
   }, [run.phase, refresh]);
 
+  const askToDelete = (visit: VisitSummary, button: HTMLButtonElement): void => {
+    focusAfterDialog.current = button;
+    setAsking(visit);
+    setDeletion({ busy: false, error: null });
+    setDeleteOpen(true);
+  };
+
+  const confirmDelete = (): void => {
+    if (asking === null) {
+      return;
+    }
+    const visit = asking;
+    setDeletion({ busy: true, error: null });
+    remove(visit.id).then(
+      () => {
+        // A run that ended for this visit has nothing left to show.
+        if (run.phase !== 'idle' && run.visitId === visit.id) {
+          clear();
+        }
+        focusAfterDialog.current = headingRef.current;
+        setDeletion({ busy: false, error: null });
+        setDeleted(`Deleted the visit “${visit.title}”`);
+        setDeleteOpen(false);
+      },
+      (error: unknown) => {
+        setDeletion({ busy: false, error: describeDeleteError(error) });
+      },
+    );
+  };
+
   const searching = state.query !== '';
   const firstLoad = state.status === 'loading' && state.items.length === 0 && !searching;
-  const empty = state.status === 'ready' && state.items.length === 0;
+  // While the server still has visits to send, an empty page is not an empty list.
+  const empty = state.status === 'ready' && state.items.length === 0 && state.nextCursor === null;
 
   return (
     <div className="space-y-10">
@@ -117,7 +189,12 @@ export function VisitList() {
       </div>
 
       <section aria-labelledby="visits-heading" className="space-y-5">
-        <h2 id="visits-heading" className="text-lg font-semibold">
+        <h2
+          id="visits-heading"
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-lg font-semibold outline-none"
+        >
           Your visits
         </h2>
 
@@ -206,7 +283,18 @@ export function VisitList() {
             )}
           >
             {state.items.map((visit) => (
-              <VisitRow key={visit.id} visit={visit} />
+              <VisitRow
+                key={visit.id}
+                visit={visit}
+                // Not while this browser is still creating the visit's note.
+                {...(run.phase === 'running' && run.visitId === visit.id
+                  ? {}
+                  : {
+                      onDelete: (button) => {
+                        askToDelete(visit, button);
+                      },
+                    })}
+              />
             ))}
           </ul>
         )}
@@ -230,7 +318,31 @@ export function VisitList() {
             )}
           </div>
         )}
+        {/* Says that a visit has gone, for someone who cannot see its row disappear. */}
+        <p role="status" className="sr-only">
+          {deleted}
+        </p>
       </section>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete this visit?"
+        description={
+          <>
+            <span className="font-medium text-foreground">{asking?.title}</span> will be deleted
+            with its transcript and its note. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete visit"
+        busyLabel="Deleting…"
+        busy={deletion.busy}
+        error={deletion.error}
+        finalFocus={focusAfterDialog}
+        onConfirm={confirmDelete}
+        onCancel={() => {
+          setDeleteOpen(false);
+        }}
+      />
     </div>
   );
 }

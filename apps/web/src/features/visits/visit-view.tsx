@@ -3,10 +3,8 @@
 import type { Transcript, VisitDetail } from '@attune/shared';
 import { ArrowLeft, MessagesSquare } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { ConfirmAction } from '@/components/confirm-action';
 import { Spinner } from '@/components/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -22,15 +20,13 @@ import type { RunState } from './process-run';
 import { useProcessRun } from './process-run-provider';
 import { RunSteps, STEP_LABEL } from './run-steps';
 import { TranscriptDialog } from './transcript-dialog';
-import { describeDeleteError, describeLoadError } from './visit-errors';
+import { describeLoadError } from './visit-errors';
 
 type Load =
   | { status: 'loading' }
   | { status: 'ready'; visit: VisitDetail }
   | { status: 'missing' }
   | { status: 'error'; message: string };
-
-type Deletion = { stage: 'idle' | 'busy' | 'done'; error: string | null };
 
 type FrameProps = {
   title: string;
@@ -57,8 +53,7 @@ function Frame({ title, about, actions, children }: FrameProps) {
             <h1 className="text-2xl font-semibold wrap-break-word">{title}</h1>
             {about !== undefined && <p className="text-sm text-muted-foreground">{about}</p>}
           </div>
-          {/* `contents` keeps each action a direct item of the row, so one of them can take a row of its own. */}
-          {actions !== undefined && <div className="contents print:hidden">{actions}</div>}
+          {actions !== undefined && <div className="print:hidden">{actions}</div>}
         </div>
       </div>
       {children}
@@ -76,7 +71,8 @@ function aboutVisit(visit: VisitDetail): string {
 type VisitViewProps = { id: string };
 
 /**
- * One visit: its note, with the transcript one click away, in a dialog.
+ * One visit: its note, with the transcript one click away, in a dialog. A
+ * visit is deleted from the list of visits, not from here.
  *
  * It has two sources. A visit that is being created right now is followed
  * live, from the run that the new-visit page started: the transcript arrives,
@@ -86,7 +82,6 @@ type VisitViewProps = { id: string };
 export function VisitView({ id }: VisitViewProps) {
   const { api } = useAuth();
   const { state: runState, retry, clear } = useProcessRun();
-  const router = useRouter();
 
   const runIsHere = runState.phase !== 'idle' && runState.visitId === id;
   // Follow a run only if it was still going when this page opened. A run that had already
@@ -96,14 +91,12 @@ export function VisitView({ id }: VisitViewProps) {
 
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
-  const [deletion, setDeletion] = useState<Deletion>({ stage: 'idle', error: null });
   // Kept here, above every state of the page, so that an open transcript stays open when the run ends.
   const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   // The run supplies the visit while it lasts. Without one, or when it ended
   // without handing over the finished visit, the API is asked.
-  const loadFromApi =
-    deletion.stage !== 'done' && (live === null || (live.phase === 'done' && live.visit === null));
+  const loadFromApi = live === null || (live.phase === 'done' && live.visit === null);
 
   const staleRun = !followsRun && runIsHere && runState.phase === 'done';
   useEffect(() => {
@@ -141,37 +134,6 @@ export function VisitView({ id }: VisitViewProps) {
     setLoad({ status: 'loading' });
     setAttempt((current) => current + 1);
   };
-
-  const remove = (): void => {
-    setDeletion({ stage: 'busy', error: null });
-    api.visits.remove(id).then(
-      () => {
-        setDeletion({ stage: 'done', error: null });
-        if (runIsHere) {
-          clear();
-        }
-        router.replace(APP_HOME);
-      },
-      (error: unknown) => {
-        setDeletion({ stage: 'idle', error: describeDeleteError(error) });
-      },
-    );
-  };
-
-  // The button sits beside the title. Its question takes a row of its own under the title, and
-  // stays on the page's background: on a card the red button's hover tint would be too faint to read.
-  const deleteAction = (
-    <ConfirmAction
-      label="Delete visit"
-      question="Delete this visit, its transcript and its note for good? This cannot be undone."
-      confirmLabel="Yes, delete it"
-      busyLabel="Deleting…"
-      busy={deletion.stage !== 'idle'}
-      error={deletion.error}
-      className="basis-full rounded-xl border border-destructive/30 p-4"
-      onConfirm={remove}
-    />
-  );
 
   // One region that outlives every state of the page, so that a screen reader
   // hears a run move on and hears when the note is ready.
@@ -213,26 +175,10 @@ export function VisitView({ id }: VisitViewProps) {
 
   let content: ReactNode;
   if (live !== null && live.phase !== 'done') {
-    content = (
-      <LiveRun
-        state={live}
-        onRetry={retry}
-        transcriptAction={transcriptAction}
-        deleteAction={deleteAction}
-      />
-    );
+    content = <LiveRun state={live} onRetry={retry} transcriptAction={transcriptAction} />;
   } else if (visit !== null) {
     content = (
-      <Frame
-        title={visit.title}
-        about={aboutVisit(visit)}
-        actions={
-          <>
-            {transcriptAction}
-            {deleteAction}
-          </>
-        }
-      >
+      <Frame title={visit.title} about={aboutVisit(visit)} actions={transcriptAction}>
         {visit.note !== null ? (
           <NoteEditor visitId={visit.id} title={visit.title} initialNote={visit.note} />
         ) : (
@@ -293,14 +239,13 @@ type LiveRunProps = {
   state: Extract<RunState, { phase: 'running' | 'failed' }>;
   onRetry: () => void;
   transcriptAction: ReactNode;
-  deleteAction: ReactNode;
 };
 
 /** A visit whose note is being made right now, or whose run has just failed. */
-function LiveRun({ state, onRetry, transcriptAction, deleteAction }: LiveRunProps) {
+function LiveRun({ state, onRetry, transcriptAction }: LiveRunProps) {
   if (state.phase === 'failed') {
     return (
-      <Frame title={state.title} about="The note could not be created" actions={deleteAction}>
+      <Frame title={state.title} about="The note could not be created">
         <RunSteps state={state} />
         <Alert variant="destructive">
           <AlertDescription>{state.failure.message}</AlertDescription>
@@ -358,8 +303,8 @@ function WithoutNote({ status, onCheckAgain }: WithoutNoteProps) {
           {status === 'FAILED' ? 'The note could not be created' : 'This visit has no note yet'}
         </AlertTitle>
         <AlertDescription>
-          Recordings are never stored, so there is nothing here to process again. Delete this visit
-          and start a new one with the recording.
+          Recordings are never stored, so there is nothing here to process again. Start a new visit
+          with the recording. This one can be deleted from your list of visits.
         </AlertDescription>
       </Alert>
       <Link href={NEW_VISIT} className={cn(buttonVariants(), 'h-11 px-5 text-base')}>

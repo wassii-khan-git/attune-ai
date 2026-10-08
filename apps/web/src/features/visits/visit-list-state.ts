@@ -24,7 +24,8 @@ export type VisitListAction =
   | { type: 'failed'; query: string; message: string }
   | { type: 'more-started' }
   | { type: 'more-loaded'; query: string; page: ListVisitsResponse }
-  | { type: 'more-failed'; query: string; message: string };
+  | { type: 'more-failed'; query: string; message: string }
+  | { type: 'removed'; id: string };
 
 export const INITIAL_VISIT_LIST: VisitListState = {
   query: '',
@@ -66,6 +67,9 @@ export function reduceVisitList(state: VisitListState, action: VisitListAction):
       };
     case 'more-started':
       return { ...state, more: 'loading', moreError: null };
+    // A deleted visit leaves the list whatever search is showing.
+    case 'removed':
+      return { ...state, items: state.items.filter((item) => item.id !== action.id) };
     default:
       break;
   }
