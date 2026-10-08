@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { AccountDeletedNotice } from '@/features/auth/account-deleted-notice';
 import { AuthNav } from '@/features/auth/auth-nav';
 import { HeroActions } from '@/features/auth/hero-actions';
+import { NotePreview } from '@/features/landing/note-preview';
 import { DISCLAIMER } from '@/lib/disclaimer';
 
 type Item = { icon: LucideIcon; title: string; text: string };
@@ -79,7 +80,7 @@ export default function LandingPage() {
       </header>
 
       <main id="main" className="flex-1">
-        <section className="mx-auto max-w-5xl px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
+        <section className="mx-auto grid max-w-5xl items-center gap-x-12 px-6 pt-16 pb-20 sm:pt-24 sm:pb-28 lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)]">
           <div className="max-w-2xl space-y-8">
             <AccountDeletedNotice />
             <Badge variant="secondary">Demo · synthetic data only</Badge>
@@ -95,6 +96,7 @@ export default function LandingPage() {
             </div>
             <HeroActions />
           </div>
+          <NotePreview />
         </section>
 
         <section aria-labelledby="how-heading" className="border-t bg-muted/40">
