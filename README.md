@@ -95,7 +95,7 @@ The [threat model](docs/threat-model.md) lists the threats, the mitigations, the
 
 ## Quality
 
-- **Tests:** 558 unit and API tests (298 API, 260 web), integration tests against a real PostgreSQL in CI, and a Playwright browser test of the whole guest flow. 80% coverage threshold on API services.
+- **Tests:** 560 unit and API tests (298 API, 262 web), integration tests against a real PostgreSQL in CI, and a Playwright browser test of the whole guest flow. 80% coverage threshold on API services.
 - **CI on every push:** formatting, lint, typecheck, tests, production build, dependency audit, CodeQL scanning and Dependabot.
 - **Accessibility:** Lighthouse scores 100 for accessibility and 100 for best practices on the landing page, the visit list, the new-visit page and the visit page (mobile preset, production build, measured locally); performance is 90 to 96. Text contrast is at least 4.5:1 in both themes, at rest and on hover, computed from the design tokens.
 - **Architecture decisions:** [ten ADRs](docs/adr) record the context, decision, alternatives and trade-offs behind each significant choice.

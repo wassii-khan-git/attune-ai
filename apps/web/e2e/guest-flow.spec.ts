@@ -101,12 +101,20 @@ test('a guest turns a sample consultation into a note, edits it, finds it again 
     await expect(visits.getByRole('link', { name: new RegExp(VISIT_TITLE) })).toBeVisible();
   });
 
-  await test.step('deleting the visit takes two clicks and empties the list', async () => {
-    await visits.getByRole('link', { name: new RegExp(VISIT_TITLE) }).click();
-    await page.getByRole('button', { name: 'Delete visit' }).click();
-    await page.getByRole('button', { name: 'Yes, delete it' }).click();
+  await test.step('deleting the visit from the list asks first, then empties the list', async () => {
+    const question = page.getByRole('alertdialog', { name: 'Delete this visit?' });
+    const deleteButton = visits.getByRole('button', { name: `Delete visit: ${VISIT_TITLE}` });
 
+    await deleteButton.click();
+    await expect(question).toContainText(VISIT_TITLE);
+    await question.getByRole('button', { name: 'Cancel' }).click();
+    await expect(visits.getByRole('link', { name: new RegExp(VISIT_TITLE) })).toBeVisible();
+
+    await deleteButton.click();
+    await question.getByRole('button', { name: 'Delete visit' }).click();
     await expect(page.getByText('No visits yet')).toBeVisible();
+    // The row has gone, so the focus moves to the heading of the list.
+    await expect(page.getByRole('heading', { name: 'Your visits' })).toBeFocused();
   });
 
   await test.step('deleting the guest session ends it', async () => {
