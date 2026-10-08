@@ -12,7 +12,6 @@ const audio: SelectedAudio = {
 };
 
 const complete: NewVisitValues = {
-  consent: true,
   audio,
   title: '  Knee pain follow-up  ',
   recording: false,
@@ -23,13 +22,6 @@ describe('validateNewVisit', () => {
     expect(validateNewVisit(complete)).toEqual({
       ok: true,
       data: { title: 'Knee pain follow-up', audio },
-    });
-  });
-
-  it('refuses to continue without consent', () => {
-    expect(validateNewVisit({ ...complete, consent: false })).toEqual({
-      ok: false,
-      errors: { consent: 'Confirm consent before you continue.' },
     });
   });
 
@@ -59,9 +51,9 @@ describe('validateNewVisit', () => {
   });
 
   it('reports every problem at once', () => {
-    const result = validateNewVisit({ consent: false, audio: null, title: '', recording: false });
+    const result = validateNewVisit({ audio: null, title: '', recording: false });
 
-    expect(result.ok ? [] : Object.keys(result.errors)).toEqual(['consent', 'audio', 'title']);
+    expect(result.ok ? [] : Object.keys(result.errors)).toEqual(['audio', 'title']);
   });
 });
 
