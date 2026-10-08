@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Welcome } from '@/features/auth/welcome';
 import { formatDateTime, formatDuration } from '@/lib/format';
 import { NEW_VISIT, visitPath } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
@@ -65,7 +66,8 @@ function Skeleton() {
 }
 
 /**
- * The signed-in home: every visit, newest first, with a search by title.
+ * The signed-in home: a welcome by name, then every visit, newest first, with
+ * a search by title.
  *
  * What is typed into the search stays in the page. It is not put in the
  * address bar, where it would end up in the browser's history.
@@ -105,121 +107,130 @@ export function VisitList() {
   const empty = state.status === 'ready' && state.items.length === 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Your visits</h1>
+    <div className="space-y-10">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+        <Welcome />
         <Link href={NEW_VISIT} className={cn(buttonVariants(), LARGE)}>
           <Plus aria-hidden />
           New visit
         </Link>
       </div>
 
-      <div className="relative">
-        <label htmlFor="visit-search" className="sr-only">
-          Search visits by title
-        </label>
-        <Search
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          id="visit-search"
-          type="search"
-          value={text}
-          maxLength={200}
-          autoComplete="off"
-          placeholder="Search by title"
-          className="h-10 pr-10 pl-9 text-base"
-          onChange={(event) => {
-            setText(event.target.value);
-          }}
-        />
-        {state.status === 'loading' && searching && (
-          <Spinner className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        )}
-      </div>
+      <section aria-labelledby="visits-heading" className="space-y-5">
+        <h2 id="visits-heading" className="text-lg font-semibold">
+          Your visits
+        </h2>
 
-      {/* Tells a screen reader what the search found, since the list changes without a page load. */}
-      <p role="status" className="sr-only">
-        {state.status === 'ready' && searching
-          ? `${String(state.items.length)} ${state.items.length === 1 ? 'visit matches' : 'visits match'}${state.nextCursor === null ? '' : ' so far'}`
-          : ''}
-      </p>
-
-      {firstLoad && <Skeleton />}
-
-      {state.status === 'failed' && (
-        <div className="space-y-4">
-          <Alert variant="destructive">
-            <AlertDescription>{state.error}</AlertDescription>
-          </Alert>
-          <Button
-            type="button"
-            className={LARGE}
-            onClick={() => {
-              search(state.query);
+        <div className="relative">
+          <label htmlFor="visit-search" className="sr-only">
+            Search visits by title
+          </label>
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            id="visit-search"
+            type="search"
+            value={text}
+            maxLength={200}
+            autoComplete="off"
+            placeholder="Search by title"
+            className="h-10 pr-10 pl-9 text-base"
+            onChange={(event) => {
+              setText(event.target.value);
             }}
-          >
-            Try again
-          </Button>
-        </div>
-      )}
-
-      {empty && !searching && (
-        <div className="rounded-xl border border-dashed px-6 py-16 text-center">
-          <p className="font-medium">No visits yet</p>
-          <p className="mt-1 text-muted-foreground">
-            Start a new visit to record, upload or try a sample conversation.
-          </p>
-        </div>
-      )}
-
-      {empty && searching && (
-        <div className="space-y-4 rounded-xl border border-dashed px-6 py-12 text-center">
-          <p className="font-medium">No visits match “{state.query}”</p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setText('');
-            }}
-          >
-            Clear the search
-          </Button>
-        </div>
-      )}
-
-      {state.items.length > 0 && (
-        <ul
-          aria-label="Visits"
-          aria-busy={state.status === 'loading'}
-          className={cn('space-y-3 transition-opacity', state.status === 'loading' && 'opacity-60')}
-        >
-          {state.items.map((visit) => (
-            <VisitRow key={visit.id} visit={visit} />
-          ))}
-        </ul>
-      )}
-
-      {state.status === 'ready' && state.nextCursor !== null && (
-        <div className="space-y-3 text-center">
-          <Button
-            type="button"
-            variant="outline"
-            className={LARGE}
-            disabled={state.more === 'loading'}
-            onClick={loadMore}
-          >
-            {state.more === 'loading' ? <Spinner /> : null}
-            {state.more === 'loading' ? 'Loading…' : 'Load more'}
-          </Button>
-          {state.more === 'failed' && (
-            <p role="alert" className="text-sm text-destructive">
-              {state.moreError}
-            </p>
+          />
+          {state.status === 'loading' && searching && (
+            <Spinner className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
           )}
         </div>
-      )}
+
+        {/* Tells a screen reader what the search found, since the list changes without a page load. */}
+        <p role="status" className="sr-only">
+          {state.status === 'ready' && searching
+            ? `${String(state.items.length)} ${state.items.length === 1 ? 'visit matches' : 'visits match'}${state.nextCursor === null ? '' : ' so far'}`
+            : ''}
+        </p>
+
+        {firstLoad && <Skeleton />}
+
+        {state.status === 'failed' && (
+          <div className="space-y-4">
+            <Alert variant="destructive">
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
+            <Button
+              type="button"
+              className={LARGE}
+              onClick={() => {
+                search(state.query);
+              }}
+            >
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {empty && !searching && (
+          <div className="rounded-xl border border-dashed px-6 py-16 text-center">
+            <p className="font-medium">No visits yet</p>
+            <p className="mt-1 text-muted-foreground">
+              Start a new visit to record, upload or try a sample conversation.
+            </p>
+          </div>
+        )}
+
+        {empty && searching && (
+          <div className="space-y-4 rounded-xl border border-dashed px-6 py-12 text-center">
+            <p className="font-medium">No visits match “{state.query}”</p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setText('');
+              }}
+            >
+              Clear the search
+            </Button>
+          </div>
+        )}
+
+        {state.items.length > 0 && (
+          <ul
+            aria-label="Visits"
+            aria-busy={state.status === 'loading'}
+            className={cn(
+              'space-y-3 transition-opacity',
+              state.status === 'loading' && 'opacity-60',
+            )}
+          >
+            {state.items.map((visit) => (
+              <VisitRow key={visit.id} visit={visit} />
+            ))}
+          </ul>
+        )}
+
+        {state.status === 'ready' && state.nextCursor !== null && (
+          <div className="space-y-3 text-center">
+            <Button
+              type="button"
+              variant="outline"
+              className={LARGE}
+              disabled={state.more === 'loading'}
+              onClick={loadMore}
+            >
+              {state.more === 'loading' ? <Spinner /> : null}
+              {state.more === 'loading' ? 'Loading…' : 'Load more'}
+            </Button>
+            {state.more === 'failed' && (
+              <p role="alert" className="text-sm text-destructive">
+                {state.moreError}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
