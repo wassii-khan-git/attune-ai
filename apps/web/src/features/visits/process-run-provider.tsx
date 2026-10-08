@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useReducer,
   useRef,
@@ -50,7 +51,9 @@ const ProcessRunContext = createContext<ProcessRun | null>(null);
  *
  * The visit is created once and reused by every retry, so trying again never
  * leaves a second, empty visit behind. The recording is held only until the
- * run succeeds or is given up.
+ * run succeeds or is given up. It lives in this tab's memory and nowhere else,
+ * so while a failed run is still holding it the browser asks before a reload
+ * or a closed tab throws it away.
  */
 export function ProcessRunProvider({ children }: { children: ReactNode }) {
   const { api } = useAuth();
@@ -130,6 +133,21 @@ export function ProcessRunProvider({ children }: { children: ReactNode }) {
     },
     [api, deleteVisit],
   );
+
+  // After a failure the recording is all that is left of the attempt, and "Try again" needs it.
+  const holdsFailedRecording = state.phase === 'failed' && state.failure.canRetry;
+  useEffect(() => {
+    if (!holdsFailedRecording) {
+      return;
+    }
+    const warn = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+    };
+  }, [holdsFailedRecording]);
 
   const forget = useCallback(() => {
     inFlight.current?.abort();

@@ -20,7 +20,9 @@ Everything else is real: the Express app with its middleware, authentication, co
 
 The server is `apps/api/src/testing/e2e-server.ts`. It lives in a folder the build leaves out, so it cannot be deployed. Playwright starts it, builds and starts the web app, and stops both. `pnpm test:e2e` runs it locally and in CI.
 
-There is one test, and it follows one first-time visitor: start as a guest, try to create a note without consent, create it from a sample, see the note and open the transcript, edit and reload, find the visit in the list, search, delete the visit, delete the session. It also fails if the page logs an error or throws.
+The first test follows one first-time visitor: start as a guest, try to create a note without consent, create it from a sample, see the note and open the transcript, edit and reload, find the visit in the list, search, delete the visit, delete the session. It also fails if the page logs an error or throws.
+
+A second test, added on 2026-10-08, covers the failure that users actually met: the AI service is overloaded when the note is asked for. The test server has a switch for this, `PUT` and `DELETE /e2e/model-outage`, and while it is on every transcription fails as an overloaded provider's does. The test checks that the page explains it in plain words, that the browser asks before a reload discards the audio, and that one click on "Try again" after the outage produces the note on the same visit, leaving no second one. Because that switch affects the whole server, the tests run one at a time.
 
 The test uses the installed Chrome, not the Chromium that Playwright bundles. The sample recordings are AAC, which the bundled build cannot decode, and using the installed browser means nothing is downloaded.
 
@@ -29,7 +31,8 @@ The test uses the installed Chrome, not the Chromium that Playwright bundles. Th
 - **Intercept the network in the browser and answer from fixtures.** No server to start. It would test the pages against what the API is assumed to do, and skip the proxy, the cookies and the stream, which is where this project's bugs have been.
 - **Run against the real database and the real model.** The most faithful, and it would make CI depend on a secret, a quota and a provider's uptime.
 - **A switch in the production server that selects the scripted model.** One server to maintain, with test behaviour reachable from production configuration.
-- **A wider suite of browser tests.** Each one is slow and breaks for reasons unrelated to what it checks. Detail belongs in unit tests; the browser test is there to prove the pieces connect.
+- **A wider suite of browser tests.** Each one is slow and breaks for reasons unrelated to what it checks. Detail belongs in unit tests; a browser test is there to prove the pieces connect. The second test earns its place because recovering from a failed run crosses the page, the provider that holds the recording, the stream and the API's handling of a failed visit.
+- **Fake the failed response in the browser.** Simpler than a switch on the server, but the API's side of a failed run (the retry, the visit marked as failed, accepting the same recording again) would not be exercised.
 
 ## Consequences
 

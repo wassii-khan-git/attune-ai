@@ -1,9 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-const WEB_PORT = 3100;
-const API_PORT = 4100;
-const WEB_ORIGIN = `http://localhost:${String(WEB_PORT)}`;
-const API_ORIGIN = `http://localhost:${String(API_PORT)}`;
+import { API_ORIGIN, API_PORT, WEB_ORIGIN, WEB_PORT } from './e2e/servers';
+
 const inCi = process.env.CI !== undefined;
 
 /**
@@ -14,6 +12,8 @@ const inCi = process.env.CI !== undefined;
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
+  // One test at a time: they share one in-memory API, and one of them switches its model off for a while.
+  workers: 1,
   forbidOnly: inCi,
   retries: inCi ? 1 : 0,
   reporter: inCi ? 'github' : 'list',

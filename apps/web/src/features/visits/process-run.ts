@@ -105,7 +105,14 @@ function describe(
         message: `Too many requests. Try again in ${formatWait(retryAfterSec)}.`,
         canRetry: true,
       };
+    // Overloaded, down or out of quota. Whatever the provider said about it stays on the server.
     case 'AI_UNAVAILABLE':
+      return {
+        message:
+          'The AI service is busy right now. Please try again in a minute. Your recording is still here.',
+        canRetry: true,
+      };
+    case 'AI_FAILED':
       return {
         message:
           'The AI service could not process this recording just now. Your recording is still here, so you can try again.',

@@ -21,7 +21,7 @@ The browser has to stay inside that frame on its own:
 
 **The five-minute limit is enforced by a timer in the browser.** A recording that reaches it is stopped and kept, with a notice. The length the browser measured is sent with the upload.
 
-**Audio stays in memory.** A recording, a chosen file or a sample is a `Blob` in the page until it is uploaded. It is not written to `localStorage`, IndexedDB or any other storage. Reloading the page discards it, and the page warns before that happens.
+**Audio stays in memory.** A recording, a chosen file or a sample is a `Blob` in the page until it is uploaded. It is not written to `localStorage`, IndexedDB or any other storage. Reloading the page discards it, and the page warns before that happens. The same warning applies after a run has failed, on whichever page the user is: the recording is then held for "Try again", which sends it to the same visit.
 
 **Consent comes before the microphone.** Pressing the record button, or creating a note from a file or a sample, first opens a dialog that asks whether everyone in the conversation has agreed. Nothing is recorded or sent until the answer is yes, and the dialog opens with the focus on "Cancel", so a stray Enter cannot confirm it. The question is asked once per visit. The API enforces consent separately and refuses to process a visit without it.
 

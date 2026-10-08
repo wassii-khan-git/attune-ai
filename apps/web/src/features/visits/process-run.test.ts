@@ -146,6 +146,28 @@ describe('reduceRun', () => {
     });
   });
 
+  it('keeps the visit and offers a retry when the AI service is busy, in words of its own', () => {
+    const fromProvider = 'AI_APICallError: This model is currently experiencing high demand (503)';
+    const state = play(
+      started,
+      created,
+      event({ type: 'stage', stage: 'transcribing' }),
+      event({ type: 'error', error: { code: 'AI_UNAVAILABLE', message: fromProvider } }),
+    );
+
+    expect(state).toEqual({
+      phase: 'failed',
+      step: 'transcribing',
+      visitId: VISIT_ID,
+      title: TITLE,
+      failure: {
+        message:
+          'The AI service is busy right now. Please try again in a minute. Your recording is still here.',
+        canRetry: true,
+      },
+    });
+  });
+
   it('records a failure that was thrown, such as a refusal', () => {
     const failure = { message: 'Limit reached.', canRetry: false };
 
@@ -277,6 +299,7 @@ describe('describeRunError', () => {
 
   it.each([
     ['AI_UNAVAILABLE', true],
+    ['AI_FAILED', true],
     ['CONFLICT', true],
     ['INTERNAL_ERROR', true],
     ['INVALID_RESPONSE', true],
@@ -288,6 +311,26 @@ describe('describeRunError', () => {
     ['NOT_FOUND', false],
   ] as const)('offers a retry for %s: %s', (code, canRetry) => {
     expect(describeRunError(refusal(400, code), false).canRetry).toBe(canRetry);
+  });
+
+  it.each(['AI_UNAVAILABLE', 'AI_FAILED', 'INTERNAL_ERROR', 'INVALID_RESPONSE'] as const)(
+    'never repeats a technical message that arrives with %s',
+    (code) => {
+      const technical = 'RESOURCE_EXHAUSTED: quota exceeded for generativelanguage (HTTP 429)';
+
+      for (const streamStarted of [false, true]) {
+        const { message } = describeRunError(refusal(503, code, technical), streamStarted);
+
+        expect(message).not.toMatch(/RESOURCE_EXHAUSTED|quota|429|generativelanguage/);
+      }
+    },
+  );
+
+  it('says the same thing whether the busy service refused the upload or failed mid-run', () => {
+    const busy = 'The AI service is busy right now. Please try again in a minute.';
+
+    expect(describeRunError(refusal(503, 'AI_UNAVAILABLE'), false).message).toContain(busy);
+    expect(describeRunError(refusal(503, 'AI_UNAVAILABLE'), true).message).toContain(busy);
   });
 
   it('never shows the text of an unexpected error', () => {
