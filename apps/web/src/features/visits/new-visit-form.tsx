@@ -1,6 +1,6 @@
 'use client';
 
-import { FileAudio, Mic, Upload, type LucideIcon } from 'lucide-react';
+import { Check, FileAudio, Mic, Upload, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
@@ -13,6 +13,7 @@ import { visitPath } from '@/lib/navigation';
 import { useLeaveWarning } from '@/lib/navigation-guard';
 
 import { AudioPreview } from './audio-preview';
+import { ConsentDialog } from './consent-dialog';
 import { FilePicker } from './file-picker';
 import { visitPageFor } from './process-run';
 import { useProcessRun } from './process-run-provider';
@@ -22,14 +23,17 @@ import { SamplePicker } from './sample-picker';
 import { audioFromRecording, type SelectedAudio } from './selected-audio';
 import { useRecorder } from './use-recorder';
 import {
-  CONSENT_REQUIRED,
   suggestTitle,
   validateNewVisit,
   type NewVisitErrors,
   type NewVisitField,
+  type NewVisitInput,
 } from './validation';
 
 type Source = 'record' | 'upload' | 'sample';
+
+/** What was asked for when the consent question came up, and goes ahead once it is answered. */
+type ConsentRequest = { for: 'recording' } | { for: 'note'; input: NewVisitInput };
 
 const SOURCES: readonly { value: Source; label: string; icon: LucideIcon }[] = [
   { value: 'record', label: 'Record', icon: Mic },
@@ -38,11 +42,13 @@ const SOURCES: readonly { value: Source; label: string; icon: LucideIcon }[] = [
 ];
 
 /**
- * The new-visit page: confirm consent, add the conversation (record it, upload
- * a file, or take a sample), name the visit, then create the note.
+ * The new-visit page: add the conversation (record it, upload a file, or take
+ * a sample), name the visit, then create the note.
  *
- * Consent comes first on purpose. The record button will not start without
- * it, and the API refuses to process a visit that has none.
+ * Consent is asked for in a dialog at the moment it is needed: before the
+ * microphone starts, or before a file or a sample is sent. It is asked once
+ * per visit. Without a yes nothing is recorded or sent, and the API refuses to
+ * process a visit that has none.
  *
  * The form stays on screen while the recording uploads, so that cancelling or
  * a refusal brings it back as it was. Once the API starts answering, the
@@ -52,7 +58,6 @@ export function NewVisitForm() {
   const { state: runState, start, retry, abandon, clear } = useProcessRun();
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const consentRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
   const focusFirstError = useRef(false);
@@ -61,6 +66,7 @@ export function NewVisitForm() {
   const focusNext = useRef<'preview' | 'source' | 'submit' | null>(null);
 
   const [consent, setConsent] = useState(false);
+  const [consentRequest, setConsentRequest] = useState<ConsentRequest | null>(null);
   const [source, setSource] = useState<Source>('record');
   const [audio, setAudio] = useState<SelectedAudio | null>(null);
   const [title, setTitle] = useState('');
@@ -90,14 +96,35 @@ export function NewVisitForm() {
   const recorderBusy =
     recorder.state.status === 'recording' || recorder.state.status === 'requesting';
 
-  const startRecording = (): void => {
-    if (!consent) {
-      setErrors((current) => ({ ...current, consent: CONSENT_REQUIRED }));
-      consentRef.current?.focus();
-      return;
-    }
+  const record = (): void => {
     clearError('audio');
     recorder.start();
+  };
+
+  const createNote = (input: NewVisitInput): void => {
+    setErrors({});
+    setTitle(input.title);
+    setStartedHere(true);
+    start(input);
+  };
+
+  const startRecording = (): void => {
+    if (consent) {
+      record();
+    } else {
+      setConsentRequest({ for: 'recording' });
+    }
+  };
+
+  const confirmConsent = (): void => {
+    const request = consentRequest;
+    setConsent(true);
+    setConsentRequest(null);
+    if (request?.for === 'recording') {
+      record();
+    } else if (request?.for === 'note') {
+      createNote(request.input);
+    }
   };
 
   useEffect(() => {
@@ -169,16 +196,18 @@ export function NewVisitForm() {
 
   const handleSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const checked = validateNewVisit({ consent, audio, title, recording: recorderBusy });
+    const checked = validateNewVisit({ audio, title, recording: recorderBusy });
     if (!checked.ok) {
       focusFirstError.current = true;
       setErrors(checked.errors);
       return;
     }
-    setErrors({});
-    setTitle(checked.data.title);
-    setStartedHere(true);
-    start(checked.data);
+    if (consent) {
+      createNote(checked.data);
+    } else {
+      setErrors({});
+      setConsentRequest({ for: 'note', input: checked.data });
+    }
   };
 
   if (startedHere && runState.phase !== 'idle') {
@@ -217,42 +246,6 @@ export function NewVisitForm() {
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-10">
-      <section aria-labelledby="consent-heading" className="space-y-3">
-        <h2 id="consent-heading" className="text-lg font-semibold">
-          Consent
-        </h2>
-        <div className="flex items-start gap-3">
-          <input
-            ref={consentRef}
-            id="consent"
-            name="consent"
-            type="checkbox"
-            checked={consent}
-            aria-invalid={errors.consent !== undefined}
-            aria-describedby={errors.consent === undefined ? 'consent-hint' : 'consent-error'}
-            onChange={(event) => {
-              setConsent(event.target.checked);
-              clearError('consent');
-            }}
-            className="mt-0.5 size-5 shrink-0 rounded accent-primary outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:ring-3 aria-invalid:ring-destructive/30"
-          />
-          <div className="space-y-1">
-            <label htmlFor="consent" className="font-medium">
-              Everyone in this conversation has agreed to it being recorded and transcribed by AI.
-            </label>
-            <p id="consent-hint" className="text-sm text-muted-foreground">
-              The time of this confirmation is saved with the visit. Without it, no recording is
-              made and no note is generated.
-            </p>
-          </div>
-        </div>
-        {errors.consent !== undefined && (
-          <p id="consent-error" className="text-sm text-destructive">
-            {errors.consent}
-          </p>
-        )}
-      </section>
-
       <section aria-labelledby="audio-heading" className="space-y-4">
         <div className="space-y-1">
           <h2 id="audio-heading" className="text-lg font-semibold">
@@ -331,9 +324,25 @@ export function NewVisitForm() {
         />
       </section>
 
-      <Button ref={submitRef} type="submit" className="h-11 px-5 text-base">
-        Create note
-      </Button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <Button ref={submitRef} type="submit" className="h-11 px-5 text-base">
+          Create note
+        </Button>
+        {consent && (
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Check aria-hidden className="size-4" />
+            Consent confirmed for this visit
+          </p>
+        )}
+      </div>
+
+      <ConsentDialog
+        open={consentRequest !== null}
+        onConfirm={confirmConsent}
+        onCancel={() => {
+          setConsentRequest(null);
+        }}
+      />
     </form>
   );
 }

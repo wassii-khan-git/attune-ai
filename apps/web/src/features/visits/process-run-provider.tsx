@@ -80,7 +80,7 @@ export function ProcessRunProvider({ children }: { children: ReactNode }) {
       try {
         let id = visitId.current;
         if (id === null) {
-          // The form only gets this far with the consent box ticked.
+          // The form only gets this far once consent has been confirmed in its dialog.
           id = (await api.visits.create({ title, consentGiven: true })).visit.id;
           if (controller.signal.aborted) {
             deleteVisit(id);

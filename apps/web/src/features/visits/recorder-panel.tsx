@@ -28,7 +28,7 @@ const LIMIT_MINUTES = String(MAX_RECORDING_SEC / 60);
 
 type RecorderPanelProps = {
   recorder: Recorder;
-  /** Called for the start button. The form checks consent before it lets recording begin. */
+  /** Called for the start button. The form asks for consent before it lets recording begin. */
   onStart: () => void;
 };
 
