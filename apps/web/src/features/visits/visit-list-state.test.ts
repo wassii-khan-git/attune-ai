@@ -116,6 +116,25 @@ describe('reduceVisitList', () => {
     });
   });
 
+  it('takes a deleted visit out of the list and leaves the rest as it was', () => {
+    const state = play(
+      { type: 'loaded', query: '', page: firstPage },
+      { type: 'removed', id: visit(1).id },
+    );
+
+    expect(state).toMatchObject({ status: 'ready', items: [visit(2)], nextCursor: 'cursor-1' });
+  });
+
+  it('takes a deleted visit out even while another search is loading', () => {
+    const state = play(
+      { type: 'loaded', query: '', page: firstPage },
+      { type: 'search', query: 'knee' },
+      { type: 'removed', id: visit(2).id },
+    );
+
+    expect(state).toMatchObject({ query: 'knee', status: 'loading', items: [visit(1)] });
+  });
+
   it('forgets a pending "load more" when a new search starts', () => {
     const state = play(
       { type: 'loaded', query: '', page: firstPage },

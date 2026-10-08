@@ -18,6 +18,8 @@ export type VisitList = {
   loadMore: () => void;
   /** Fetches the first page of the current search again, quietly, to pick up changes. */
   refresh: () => void;
+  /** Deletes a visit and takes it out of the list. Rejects, with the list as it was, if that fails. */
+  remove: (id: string) => Promise<void>;
 };
 
 /**
@@ -69,7 +71,7 @@ export function useVisitList(): VisitList {
     [fetchFirstPage],
   );
 
-  const { query, nextCursor, status } = state;
+  const { query, nextCursor, status, items } = state;
 
   const refresh = useCallback(() => {
     if (status === 'ready') {
@@ -92,5 +94,17 @@ export function useVisitList(): VisitList {
     );
   }, [api, query, nextCursor]);
 
-  return { state, search, loadMore, refresh };
+  const remove = useCallback(
+    async (id: string) => {
+      await api.visits.remove(id);
+      dispatch({ type: 'removed', id });
+      // The last visit on screen has gone, but the server has more of them: fetch those.
+      if (nextCursor !== null && items.every((item) => item.id === id)) {
+        fetchFirstPage(query, true);
+      }
+    },
+    [api, fetchFirstPage, items, nextCursor, query],
+  );
+
+  return { state, search, loadMore, refresh, remove };
 }

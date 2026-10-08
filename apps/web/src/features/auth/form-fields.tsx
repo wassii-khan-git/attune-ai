@@ -62,7 +62,7 @@ export function PasswordField(props: Omit<TextFieldProps, 'type'>) {
         onClick={() => {
           setVisible((current) => !current);
         }}
-        className="absolute top-[1.9rem] right-1 flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="hover:bg-muted rounded-2xl absolute top-[1.7rem] right-1 flex size-8 items-center justify-center text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         {visible ? (
           <EyeOff aria-hidden className="size-4" />
