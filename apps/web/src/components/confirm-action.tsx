@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 type ConfirmActionProps = {
   /** The button that starts it, such as "Delete visit". */
@@ -17,6 +18,8 @@ type ConfirmActionProps = {
   busy: boolean;
   /** Why the action failed, if it did. */
   error?: string | null;
+  /** For the question and its two buttons, which take more room than the button they replace. */
+  className?: string;
   onConfirm: () => void;
 };
 
@@ -31,6 +34,7 @@ export function ConfirmAction({
   busyLabel,
   busy,
   error = null,
+  className,
   onConfirm,
 }: ConfirmActionProps) {
   const [asking, setAsking] = useState(false);
@@ -67,7 +71,7 @@ export function ConfirmAction({
   }
 
   return (
-    <div role="group" aria-label={label} className="space-y-3">
+    <div role="group" aria-label={label} className={cn('space-y-3', className)}>
       <p className="font-medium">{question}</p>
       <div className="flex flex-wrap gap-3">
         <Button

@@ -9,12 +9,17 @@ export const metadata: Metadata = { title: 'Visit' };
 
 type VisitPageProps = { params: Promise<{ id: string }> };
 
-/** One visit: its transcript and its note. */
+/** One visit: its note, with the transcript one click away. */
 export default async function VisitPage({ params }: VisitPageProps) {
   const parsed = visitIdParamsSchema.safeParse(await params);
   if (!parsed.success) {
     notFound();
   }
   // Keyed by the visit, so that moving from one visit to another starts from a clean slate.
-  return <VisitView key={parsed.data.id} id={parsed.data.id} />;
+  // The column is as wide as a note reads comfortably.
+  return (
+    <div className="mx-auto max-w-3xl">
+      <VisitView key={parsed.data.id} id={parsed.data.id} />
+    </div>
+  );
 }
