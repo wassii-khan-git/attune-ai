@@ -2,11 +2,10 @@ import { visitTitleSchema } from '@attune/shared';
 
 import type { SelectedAudio } from './selected-audio';
 
-export type NewVisitField = 'consent' | 'audio' | 'title';
+export type NewVisitField = 'audio' | 'title';
 export type NewVisitErrors = Partial<Record<NewVisitField, string>>;
 
 export type NewVisitValues = {
-  consent: boolean;
   audio: SelectedAudio | null;
   title: string;
   /** True while the microphone is still recording. */
@@ -18,19 +17,15 @@ export type NewVisitInput = { title: string; audio: SelectedAudio };
 export type NewVisitValidation =
   { ok: true; data: NewVisitInput } | { ok: false; errors: NewVisitErrors };
 
-export const CONSENT_REQUIRED = 'Confirm consent before you continue.';
-
 /**
  * Checks the new-visit form before anything is sent. The title rule is the
- * shared schema's, the same one the API applies. Consent is also enforced by
- * the API, which refuses to process a visit without it.
+ * shared schema's, the same one the API applies. Consent is not a field: the
+ * form asks for it in a dialog once these checks pass, and the API refuses to
+ * process a visit without it.
  */
 export function validateNewVisit(values: NewVisitValues): NewVisitValidation {
   const errors: NewVisitErrors = {};
 
-  if (!values.consent) {
-    errors.consent = CONSENT_REQUIRED;
-  }
   if (values.recording) {
     errors.audio = 'Stop the recording first.';
   } else if (values.audio === null) {

@@ -1,7 +1,7 @@
 'use client';
 
-import type { VisitDetail } from '@attune/shared';
-import { ArrowLeft } from 'lucide-react';
+import type { Transcript, VisitDetail } from '@attune/shared';
+import { ArrowLeft, MessagesSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -21,7 +21,7 @@ import { NoteEditor } from './note-editor';
 import type { RunState } from './process-run';
 import { useProcessRun } from './process-run-provider';
 import { RunSteps, STEP_LABEL } from './run-steps';
-import { TranscriptView } from './transcript-view';
+import { TranscriptDialog } from './transcript-dialog';
 import { describeDeleteError, describeLoadError } from './visit-errors';
 
 type Load =
@@ -32,10 +32,16 @@ type Load =
 
 type Deletion = { stage: 'idle' | 'busy' | 'done'; error: string | null };
 
-const TWO_COLUMNS = 'grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]';
+type FrameProps = {
+  title: string;
+  about?: string;
+  /** What can be done with this visit, shown level with the title. */
+  actions?: ReactNode;
+  children: ReactNode;
+};
 
-/** The top of every state of the page: the way back, the title and a line about the visit. */
-function Frame({ title, about, children }: { title: string; about?: string; children: ReactNode }) {
+/** The top of every state of the page: the way back, the title, a line about the visit and its actions. */
+function Frame({ title, about, actions, children }: FrameProps) {
   return (
     <div className="space-y-8">
       <div className="space-y-3">
@@ -46,24 +52,17 @@ function Frame({ title, about, children }: { title: string; about?: string; chil
           <ArrowLeft aria-hidden className="size-4" />
           Visits
         </Link>
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">{title}</h1>
-          {about !== undefined && <p className="text-sm text-muted-foreground">{about}</p>}
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-4">
+          <div className="mr-auto min-w-0 space-y-1">
+            <h1 className="text-2xl font-semibold wrap-break-word">{title}</h1>
+            {about !== undefined && <p className="text-sm text-muted-foreground">{about}</p>}
+          </div>
+          {/* `contents` keeps each action a direct item of the row, so one of them can take a row of its own. */}
+          {actions !== undefined && <div className="contents print:hidden">{actions}</div>}
         </div>
       </div>
       {children}
     </div>
-  );
-}
-
-function TranscriptColumn({ children }: { children: ReactNode }) {
-  return (
-    <section aria-labelledby="transcript-heading" className="space-y-5 print:hidden">
-      <h2 id="transcript-heading" className="text-lg font-semibold">
-        Transcript
-      </h2>
-      {children}
-    </section>
   );
 }
 
@@ -77,10 +76,10 @@ function aboutVisit(visit: VisitDetail): string {
 type VisitViewProps = { id: string };
 
 /**
- * One visit: its transcript and its note.
+ * One visit: its note, with the transcript one click away, in a dialog.
  *
  * It has two sources. A visit that is being created right now is followed
- * live, from the run that the new-visit page started: the transcript appears,
+ * live, from the run that the new-visit page started: the transcript arrives,
  * then the note is written section by section, then it becomes editable. Any
  * other visit is loaded from the API.
  */
@@ -98,6 +97,8 @@ export function VisitView({ id }: VisitViewProps) {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [deletion, setDeletion] = useState<Deletion>({ stage: 'idle', error: null });
+  // Kept here, above every state of the page, so that an open transcript stays open when the run ends.
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   // The run supplies the visit while it lasts. Without one, or when it ended
   // without handing over the finished visit, the API is asked.
@@ -157,24 +158,19 @@ export function VisitView({ id }: VisitViewProps) {
     );
   };
 
-  const deleteSection = (
-    <section aria-labelledby="delete-heading" className="space-y-3 border-t pt-8 print:hidden">
-      <h2 id="delete-heading" className="text-lg font-semibold">
-        Delete this visit
-      </h2>
-      <p className="text-sm text-muted-foreground">
-        Removes the visit with its transcript and note. This cannot be undone.
-      </p>
-      <ConfirmAction
-        label="Delete visit"
-        question="Delete this visit, its transcript and its note for good?"
-        confirmLabel="Yes, delete it"
-        busyLabel="Deleting…"
-        busy={deletion.stage !== 'idle'}
-        error={deletion.error}
-        onConfirm={remove}
-      />
-    </section>
+  // The button sits beside the title. Its question takes a row of its own under the title, and
+  // stays on the page's background: on a card the red button's hover tint would be too faint to read.
+  const deleteAction = (
+    <ConfirmAction
+      label="Delete visit"
+      question="Delete this visit, its transcript and its note for good? This cannot be undone."
+      confirmLabel="Yes, delete it"
+      busyLabel="Deleting…"
+      busy={deletion.stage !== 'idle'}
+      error={deletion.error}
+      className="basis-full rounded-xl border border-destructive/30 p-4"
+      onConfirm={remove}
+    />
   );
 
   // One region that outlives every state of the page, so that a screen reader
@@ -191,25 +187,57 @@ export function VisitView({ id }: VisitViewProps) {
   const finished = live?.phase === 'done' ? live.visit : null;
   const visit = finished ?? (load.status === 'ready' ? load.visit : null);
 
+  // The transcript belongs to a run while it is being followed, and to a visit that has its note.
+  let transcript: Transcript | null = null;
+  if (live !== null && live.phase !== 'done') {
+    transcript = live.phase === 'running' ? live.transcript : null;
+  } else if (visit !== null && visit.note !== null) {
+    transcript = visit.transcript;
+  }
+
+  // The transcript stays out of sight until it is asked for: the note is what the page is for.
+  const transcriptAction = transcript !== null && (
+    <Button
+      type="button"
+      variant="outline"
+      className="h-10 px-4"
+      aria-haspopup="dialog"
+      onClick={() => {
+        setTranscriptOpen(true);
+      }}
+    >
+      <MessagesSquare aria-hidden />
+      Show transcript
+    </Button>
+  );
+
   let content: ReactNode;
   if (live !== null && live.phase !== 'done') {
-    content = <LiveRun state={live} onRetry={retry} deleteSection={deleteSection} />;
+    content = (
+      <LiveRun
+        state={live}
+        onRetry={retry}
+        transcriptAction={transcriptAction}
+        deleteAction={deleteAction}
+      />
+    );
   } else if (visit !== null) {
     content = (
-      <Frame title={visit.title} about={aboutVisit(visit)}>
+      <Frame
+        title={visit.title}
+        about={aboutVisit(visit)}
+        actions={
+          <>
+            {transcriptAction}
+            {deleteAction}
+          </>
+        }
+      >
         {visit.note !== null ? (
-          <div className={TWO_COLUMNS}>
-            <NoteEditor visitId={visit.id} title={visit.title} initialNote={visit.note} />
-            {visit.transcript !== null && (
-              <TranscriptColumn>
-                <TranscriptView transcript={visit.transcript} />
-              </TranscriptColumn>
-            )}
-          </div>
+          <NoteEditor visitId={visit.id} title={visit.title} initialNote={visit.note} />
         ) : (
           <WithoutNote status={visit.status} onCheckAgain={reload} />
         )}
-        {deleteSection}
       </Frame>
     );
   } else if (load.status === 'missing') {
@@ -247,6 +275,16 @@ export function VisitView({ id }: VisitViewProps) {
         {announcement}
       </p>
       {content}
+      {/* Outside the states above, so the dialog is not closed and reopened when one replaces another. */}
+      {transcript !== null && (
+        <TranscriptDialog
+          open={transcriptOpen}
+          transcript={transcript}
+          onClose={() => {
+            setTranscriptOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -254,14 +292,15 @@ export function VisitView({ id }: VisitViewProps) {
 type LiveRunProps = {
   state: Extract<RunState, { phase: 'running' | 'failed' }>;
   onRetry: () => void;
-  deleteSection: ReactNode;
+  transcriptAction: ReactNode;
+  deleteAction: ReactNode;
 };
 
 /** A visit whose note is being made right now, or whose run has just failed. */
-function LiveRun({ state, onRetry, deleteSection }: LiveRunProps) {
+function LiveRun({ state, onRetry, transcriptAction, deleteAction }: LiveRunProps) {
   if (state.phase === 'failed') {
     return (
-      <Frame title={state.title} about="The note could not be created">
+      <Frame title={state.title} about="The note could not be created" actions={deleteAction}>
         <RunSteps state={state} />
         <Alert variant="destructive">
           <AlertDescription>{state.failure.message}</AlertDescription>
@@ -271,28 +310,15 @@ function LiveRun({ state, onRetry, deleteSection }: LiveRunProps) {
             Try again
           </Button>
         )}
-        {deleteSection}
       </Frame>
     );
   }
 
+  // The transcript's button appears once there is one to show; until then the steps say what is happening.
   return (
-    <Frame title={state.title} about="Creating the note">
+    <Frame title={state.title} about="Creating the note" actions={transcriptAction}>
       <RunSteps state={state} />
-      <div className={TWO_COLUMNS}>
-        <LiveNote note={state.note} />
-        <TranscriptColumn>
-          {state.transcript === null ? (
-            <div aria-hidden className="space-y-3">
-              <div className="h-4 w-1/4 animate-pulse rounded bg-muted" />
-              <div className="h-4 w-full animate-pulse rounded bg-muted" />
-              <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-            </div>
-          ) : (
-            <TranscriptView transcript={state.transcript} />
-          )}
-        </TranscriptColumn>
-      </div>
+      <LiveNote note={state.note} />
     </Frame>
   );
 }
