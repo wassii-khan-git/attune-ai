@@ -227,4 +227,75 @@ export const EVAL_CASES: EvalCase[] = [
       notDiscussed: [],
     },
   },
+  {
+    id: 'unclear-answers',
+    purpose:
+      'Symptoms the clinician asked about stay in the note when the answer is unclear, and an inaudible drug name is not guessed.',
+    transcript: [
+      { speaker: 'Clinician', text: 'What can I help you with today?' },
+      {
+        speaker: 'Patient',
+        text: 'I have had a headache for four days now, mostly on the left side.',
+      },
+      { speaker: 'Clinician', text: 'Have you had any back pain with it?' },
+      { speaker: 'Patient', text: 'No, no back pain at all.' },
+      { speaker: 'Clinician', text: 'Any blurred vision?' },
+      { speaker: 'Patient', text: '[inaudible]' },
+      { speaker: 'Clinician', text: 'And any numbness in your arms or legs?' },
+      { speaker: 'Patient', text: 'Well, it is sort of [inaudible] I could not really say.' },
+      { speaker: 'Clinician', text: 'Are you taking anything for the headache?' },
+      { speaker: 'Patient', text: 'Yes, I have been taking [inaudible] twice a day.' },
+      {
+        speaker: 'Clinician',
+        text: 'Thank you. Give me a moment, I need to take a call, and then we will carry on.',
+      },
+    ],
+    expect: {
+      mustContain: [
+        { section: 'subjective', label: 'the headache', anyOf: [/headache/i] },
+        {
+          section: 'subjective',
+          label: 'the four-day duration',
+          anyOf: [/four days/i, /4 days/i, /4-day/i, /four-day/i],
+        },
+        {
+          section: 'subjective',
+          label: 'the back pain that was asked about',
+          anyOf: [/back pain/i],
+        },
+        {
+          section: 'subjective',
+          label: 'blurred vision as asked about, with the answer unclear',
+          anyOf: [
+            /blurred vision[^.]*(unclear|inaudible)/i,
+            /(unclear|inaudible)[^.]*blurred vision/i,
+          ],
+        },
+        {
+          section: 'subjective',
+          label: 'numbness as asked about, with the answer unclear',
+          anyOf: [/numbness[^.]*(unclear|inaudible)/i, /(unclear|inaudible)[^.]*numbness/i],
+        },
+        {
+          section: 'subjective',
+          label: 'that something is taken twice a day',
+          anyOf: [/twice (a|per) day/i, /twice daily/i, /two times (a|per) day/i],
+        },
+      ],
+      mustNotInvent: [
+        {
+          label: 'a drug name',
+          pattern:
+            /paracetamol|acetaminophen|tylenol|ibuprofen|advil|nurofen|aspirin|naproxen|diclofenac|codeine|triptan|amitriptyline|propranolol|topiramate/i,
+        },
+        { label: 'a dose', pattern: /\d\s*(mg|milligrams?|tablets?)\b/i },
+        {
+          section: 'subjective',
+          label: 'an answer about blurred vision',
+          pattern: /(denies|denied|reports|has|with|without)\s+(any\s+)?blurred vision/i,
+        },
+      ],
+      notDiscussed: ['objective', 'assessment', 'plan'],
+    },
+  },
 ];
