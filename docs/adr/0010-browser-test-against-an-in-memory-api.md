@@ -20,7 +20,7 @@ Everything else is real: the Express app with its middleware, authentication, co
 
 The server is `apps/api/src/testing/e2e-server.ts`. It lives in a folder the build leaves out, so it cannot be deployed. Playwright starts it, builds and starts the web app, and stops both. `pnpm test:e2e` runs it locally and in CI.
 
-There is one test, and it follows one first-time visitor: start as a guest, try to create a note without consent, create it from a sample, see the transcript and the note, edit and reload, find the visit in the list, search, delete the visit, delete the session. It also fails if the page logs an error or throws.
+There is one test, and it follows one first-time visitor: start as a guest, try to create a note without consent, create it from a sample, see the note and open the transcript, edit and reload, find the visit in the list, search, delete the visit, delete the session. It also fails if the page logs an error or throws.
 
 The test uses the installed Chrome, not the Chromium that Playwright bundles. The sample recordings are AAC, which the bundled build cannot decode, and using the installed browser means nothing is downloaded.
 

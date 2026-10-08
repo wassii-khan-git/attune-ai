@@ -23,9 +23,11 @@ Three things shape the design:
 
 **Unsaved text lives in the page's memory only.** It is not mirrored into `localStorage` or IndexedDB.
 
-**The run lives above the pages.** The request that creates a note belongs to a provider around the signed-in app, not to the page that started it. The form stays on screen while the recording uploads, so cancelling brings it back as it was. When the API starts answering, the browser moves to the visit's page, which shows the transcript and then the note being written. When the run is done the note becomes editable in place.
+**The run lives above the pages.** The request that creates a note belongs to a provider around the signed-in app, not to the page that started it. The form stays on screen while the recording uploads, so cancelling brings it back as it was. When the API starts answering, the browser moves to the visit's page, which shows each step of the run and then the note being written. When the run is done the note becomes editable in place.
 
 **A visit page trusts the run only while it watched it happen.** If the page opens after the run has finished, it loads the visit from the API, because the run still holds the note as first drafted and edits may have been saved since.
+
+**The note is the page; the transcript is one click away.** The note reads as a plain document: four headings and their text, with no boxes around them. A section shows that it is a field when the pointer or the keyboard reaches it. A note taller than most of the screen scrolls inside the page, so its heading and actions stay in reach, and the scrollbar appears only while the pointer or the keyboard is in the note. The transcript is the longer and the more sensitive of the two texts, and it is needed only to check the note, so it stays closed until "Show transcript" is pressed and then opens in a dialog. Deleting the visit is offered next to the title, not at the foot of the page, and still takes a second, deliberate click.
 
 **Model output is shown as text.** The transcript and the note are rendered as plain text nodes, never as markup.
 
@@ -42,6 +44,7 @@ Three things shape the design:
 - **Saving one section at a time.** Smaller requests, and two sections edited in two tabs would not collide. The API would need a partial update, and the saving is negligible at this size.
 - **Refusing a save that is based on an older version** (a version number or `If-Match`). The right answer if several people edit one note. Here a note has one author, so it is recorded as a known limit below.
 - **Generating the PDF with a library, in the browser or on the server.** Full control over the layout, at the cost of a large dependency or of rendering patient text on a server. The print dialog is already on every device and also prints.
+- **Keeping the transcript on screen beside the note.** Checking a sentence against its source would take a glance instead of a click. It would also leave the longer, more sensitive text in view of anyone passing, and take two fifths of the width from the note.
 - **Keeping the run in the page that started it** and showing the result there. The visit page would then need a second copy of the same view for visits opened later.
 
 ## Consequences
