@@ -72,7 +72,7 @@ docs/threat-model.md
 - **Sessions done properly.** 15-minute access tokens, rotating refresh tokens stored hashed, replay detection that revokes every session, `httpOnly` cookies for the browser. ([ADR 0004](docs/adr/0004-sessions-and-tokens.md))
 - **Same-origin proxy.** The web app reaches the API through its own origin, so `SameSite` cookies keep working across two Vercel projects without weakening them, behind a nonce-based content security policy. ([ADR 0007](docs/adr/0007-same-origin-proxy-for-the-web-app.md))
 - **Serverless-aware design.** Rate limits and AI quotas are stored in Postgres, because serverless functions share no memory. ([ADR 0006](docs/adr/0006-rate-limits-and-quotas-in-postgres.md))
-- **Resilient AI calls.** Timeouts, one retry with backoff, versioned prompts, and an evaluation set (`pnpm eval`) that checks notes for required facts and invented claims.
+- **Resilient AI calls.** A model per task, timeouts, and one retry with backoff that moves to a fallback model when the first is overloaded. If both fail, the user gets a plain message and retries the same recording with one click. Prompts are versioned, and an evaluation set (`pnpm eval`) checks notes for required facts and invented claims. ([ADR 0003](docs/adr/0003-streaming-instead-of-a-job-queue.md))
 - **An edit is never lost.** The note saves as it is typed, one save at a time and always the newest text; a failed save keeps the text and retries. ([ADR 0009](docs/adr/0009-editing-saving-and-exporting-the-note.md))
 - **Fail-fast configuration.** The API validates every environment variable at startup and refuses to run with unsafe production settings.
 - **A documented contract.** The API is versioned under `/v1`, and its OpenAPI document is generated from the same Zod schemas that validate requests.
@@ -95,7 +95,7 @@ The [threat model](docs/threat-model.md) lists the threats, the mitigations, the
 
 ## Quality
 
-- **Tests:** 560 unit and API tests (298 API, 262 web), integration tests against a real PostgreSQL in CI, and a Playwright browser test of the whole guest flow. 80% coverage threshold on API services.
+- **Tests:** 595 unit and API tests (326 API, 269 web), integration tests against a real PostgreSQL in CI, and two Playwright browser tests: the whole guest flow, and recovery from an AI outage. 80% coverage threshold on API services.
 - **CI on every push:** formatting, lint, typecheck, tests, production build, dependency audit, CodeQL scanning and Dependabot.
 - **Accessibility:** Lighthouse scores 100 for accessibility and 100 for best practices on the landing page, the visit list, the new-visit page and the visit page (mobile preset, production build, measured locally); performance is 90 to 96. Text contrast is at least 4.5:1 in both themes, at rest and on hover, computed from the design tokens.
 - **Architecture decisions:** [ten ADRs](docs/adr) record the context, decision, alternatives and trade-offs behind each significant choice.
@@ -133,14 +133,14 @@ pnpm --filter @attune/api db:migrate
 pnpm dev                                       # API on port 4000, web app on port 3000
 ```
 
-| Command                 | Purpose                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------ |
-| `pnpm dev`              | Run the API and web app                                                        |
-| `pnpm test`             | Unit and API tests                                                             |
-| `pnpm test:integration` | Tests against a real PostgreSQL                                                |
-| `pnpm test:e2e`         | Browser test of the guest flow, on an in-memory API: no database or key needed |
-| `pnpm eval`             | Score the note prompt against synthetic consultations                          |
-| `pnpm lint`             | ESLint, including the rules that enforce the API's layers                      |
+| Command                 | Purpose                                                      |
+| ----------------------- | ------------------------------------------------------------ |
+| `pnpm dev`              | Run the API and web app                                      |
+| `pnpm test`             | Unit and API tests                                           |
+| `pnpm test:integration` | Tests against a real PostgreSQL                              |
+| `pnpm test:e2e`         | Browser tests on an in-memory API: no database or key needed |
+| `pnpm eval`             | Score the note prompt against synthetic consultations        |
+| `pnpm lint`             | ESLint, including the rules that enforce the API's layers    |
 
 ## Status
 
@@ -149,3 +149,5 @@ The API and the web app are complete and live. A mobile app (Expo) on the same A
 ## Author
 
 **Waseem Khan**, Software Engineer (Full Stack) · [LinkedIn](https://www.linkedin.com/in/waseem-khan-5a9393214) · [GitHub](https://github.com/wassii-khan-git)
+
+© 2026 Waseem Khan. All rights reserved. This code is shared for portfolio review only and may not be used, copied or distributed without permission.
