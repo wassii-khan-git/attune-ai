@@ -60,7 +60,7 @@ A pnpm and Turborepo monorepo. `packages/shared` holds the Zod schemas that the 
 apps/api          Express 5 + TypeScript: routes → controllers → services → repositories
 apps/api/eval     Synthetic transcripts that score the note prompt
 apps/web          Next.js App Router, Tailwind CSS, shadcn/ui
-apps/web/e2e      Playwright test of the guest flow
+apps/web/e2e      Playwright tests of the guest flow, an AI outage and the link preview
 packages/shared   Zod schemas and types shared by every app
 docs/adr          Architecture decision records
 docs/threat-model.md
@@ -95,7 +95,7 @@ The [threat model](docs/threat-model.md) lists the threats, the mitigations, the
 
 ## Quality
 
-- **Tests:** 595 unit and API tests (326 API, 269 web), integration tests against a real PostgreSQL in CI, and two Playwright browser tests: the whole guest flow, and recovery from an AI outage. 80% coverage threshold on API services.
+- **Tests:** 598 unit and API tests (326 API, 272 web), integration tests against a real PostgreSQL in CI, and three Playwright tests on the production build: the whole guest flow, recovery from an AI outage, and what a link preview's crawler is served. 80% coverage threshold on API services.
 - **CI on every push:** formatting, lint, typecheck, tests, production build, dependency audit, CodeQL scanning and Dependabot.
 - **Accessibility:** Lighthouse scores 100 for accessibility and 100 for best practices on the landing page, the visit list, the new-visit page and the visit page (mobile preset, production build, measured locally); performance is 90 to 96. Text contrast is at least 4.5:1 in both themes, at rest and on hover, computed from the design tokens.
 - **Architecture decisions:** [ten ADRs](docs/adr) record the context, decision, alternatives and trade-offs behind each significant choice.

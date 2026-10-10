@@ -4,6 +4,15 @@ const schema = z.object({
   /** Where the API lives. Every /v1 request is forwarded there. */
   API_URL: z.url({ protocol: /^https?$/ }).transform((url) => new URL(url).origin),
   /**
+   * The public address of this site. A link preview is built by another
+   * service, which needs absolute addresses for the page and its image, so the
+   * metadata resolves them against this. The default is the deployed demo.
+   */
+  SITE_URL: z
+    .url({ protocol: /^https?$/ })
+    .default('https://attune-ai-web.vercel.app')
+    .transform((url) => new URL(url).origin),
+  /**
    * Shared with the API (same variable name there). With it, the API accepts
    * the browser's address from this app; without it, the API counts all
    * browser traffic as coming from this app's own address.

@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils';
 /**
  * The product mark and name, as a link. The mark is a speech bubble in which
  * the bars of a voice turn into the lines of a note. `app/icon.svg` is the
- * same drawing with the colours written out, for the browser tab.
+ * same drawing with the colours written out, for the browser tab and for the
+ * picture shown with a shared link (`app/opengraph-image.png`).
  */
 export function Brand({ href = '/', className }: { href?: string; className?: string }) {
   return (

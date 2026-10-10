@@ -24,7 +24,9 @@ The first test follows one first-time visitor: start as a guest, try to create a
 
 A second test, added on 2026-10-08, covers the failure that users actually met: the AI service is overloaded when the note is asked for. The test server has a switch for this, `PUT` and `DELETE /e2e/model-outage`, and while it is on every transcription fails as an overloaded provider's does. The test checks that the page explains it in plain words, that the browser asks before a reload discards the audio, and that one click on "Try again" after the outage produces the note on the same visit, leaving no second one. Because that switch affects the whole server, the tests run one at a time.
 
-The test uses the installed Chrome, not the Chromium that Playwright bundles. The sample recordings are AAC, which the bundled build cannot decode, and using the installed browser means nothing is downloaded.
+A third test, added on 2026-10-10, checks what LinkedIn, Slack or X are served when someone posts the site's address. It opens no browser: it requests the landing page as a crawler does, with no session, and checks that the tags of a link preview are in the `<head>`, that the picture's address is absolute and on the site's public address (`SITE_URL`), and that the picture itself can be fetched. Only the production server renders those tags, so a unit test could not check them, and the request passes through the same proxy and content security policy as any other.
+
+The browser tests use the installed Chrome, not the Chromium that Playwright bundles. The sample recordings are AAC, which the bundled build cannot decode, and using the installed browser means nothing is downloaded.
 
 ## Alternatives considered
 

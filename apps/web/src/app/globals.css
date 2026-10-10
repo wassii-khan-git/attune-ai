@@ -12,7 +12,8 @@
  * shade of the neutral. Colours are in OKLCH so that equal lightness values
  * look equally light, which keeps contrast predictable across both themes.
  * `app/icon.svg` and the theme colours in `app/layout.tsx` repeat three of
- * these values as hex; change them together.
+ * these values as hex; change them together. `app/opengraph-image.png` is
+ * drawn from the light theme: redraw it with `scripts/make-og-image.mjs`.
  */
 :root {
   --radius: 0.75rem;

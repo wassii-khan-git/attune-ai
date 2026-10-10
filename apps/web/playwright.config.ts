@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-import { API_ORIGIN, API_PORT, WEB_ORIGIN, WEB_PORT } from './e2e/servers';
+import { API_ORIGIN, API_PORT, SITE_ORIGIN, WEB_ORIGIN, WEB_PORT } from './e2e/servers';
 
 const inCi = process.env.CI !== undefined;
 
@@ -34,7 +34,7 @@ export default defineConfig({
     {
       command: `pnpm exec next build && pnpm exec next start --port ${String(WEB_PORT)}`,
       url: WEB_ORIGIN,
-      env: { API_URL: API_ORIGIN },
+      env: { API_URL: API_ORIGIN, SITE_URL: SITE_ORIGIN },
       reuseExistingServer: false,
       timeout: 180_000,
     },
