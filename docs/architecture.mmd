@@ -1,0 +1,6 @@
+flowchart LR
+  B[Browser] -->|same-origin /v1| W[Next.js web app<br/>Vercel]
+  W -->|proxy| A[Express API<br/>Vercel Functions]
+  A -->|Prisma| D[(Neon PostgreSQL<br/>encrypted fields)]
+  A -->|audio in memory only| G[Gemini<br/>transcribe + draft]
+  C[Vercel Cron] -->|daily retention| A

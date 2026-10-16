@@ -45,14 +45,10 @@ All screenshots show invented consultations.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  B[Browser] -->|same-origin /v1| W[Next.js web app<br/>Vercel]
-  W -->|proxy| A[Express API<br/>Vercel Functions]
-  A -->|Prisma| D[(Neon PostgreSQL<br/>encrypted fields)]
-  A -->|audio in memory only| G[Gemini<br/>transcribe + draft]
-  C[Vercel Cron] -->|daily retention| A
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
+  <img alt="Architecture: browser to Next.js web app, proxied to the Express API, which uses Neon PostgreSQL (encrypted fields) and Gemini; Vercel Cron runs daily retention" src="docs/architecture-light.png">
+</picture>
 
 A pnpm and Turborepo monorepo. `packages/shared` holds the Zod schemas that the API and web app both use, so a change to the note's shape is checked everywhere at compile time.
 
