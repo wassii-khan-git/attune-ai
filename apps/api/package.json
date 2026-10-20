@@ -23,11 +23,11 @@
     "migrate:production": "node scripts/migrate-on-production.mjs"
   },
   "dependencies": {
-    "@ai-sdk/google": "^4.0.87",
+    "@ai-sdk/google": "^4.0.94",
     "@attune/shared": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "ai": "^7.0.127",
+    "ai": "^7.0.138",
     "bcryptjs": "^3.0.3",
     "cookie": "^2.0.1",
     "cors": "^2.8.6",
